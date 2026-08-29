@@ -6,6 +6,7 @@ import { UserModule } from './user/user.module.js';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CompanyModule } from './company/company.module.js';
+import { AdminUnityModule } from './admin-unity/admin-unity.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -35,6 +36,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     UserModule,
     CompanyModule,
+    AdminUnityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
