@@ -1,4 +1,2 @@
-import { updateUserSchema, type UpdateUserDto } from './update-user.schema.js';
-
-export { updateUserSchema };
-export type { UpdateUserDto };
+export { updateUserSchema, UpdateUserDto } from './update-user.schema.js';
+export type { UpdateUserDtoType } from './update-user.schema.js';
