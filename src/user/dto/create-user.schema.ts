@@ -8,7 +8,7 @@ export const createUserSchema = z.object({
   }),
   email: z.email('Invalid email address').meta({
     description: 'Email do usuário (deve ser único)',
-    examples: ['[email protected]'],
+    examples: ['joao@email.com'],
     format: 'email',
   }),
   password: z.string().min(6, 'Password must be at least 6 characters').meta({

@@ -31,7 +31,7 @@ export class User {
 
   @ApiProperty({
     description: 'Email do usuário (deve ser único)',
-    example: '[email protected]',
+    example: 'joao@email.com',
     format: 'email',
   })
   @Column({ unique: true })
