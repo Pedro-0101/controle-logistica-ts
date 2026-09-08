@@ -1,26 +1,62 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateVehicleDto } from './dto/create-vehicle.dto.js';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto.js';
+import { Vehicle } from './entities/vehicle.entity.js';
+import {
+  type Actor,
+  companyScopeFilter,
+  forceCompanyId,
+  resolveCompanyScope,
+  withCompanyScopeWhere,
+} from '../auth/company-scope.js';
 
 @Injectable()
 export class VehicleService {
-  create(createVehicleDto: CreateVehicleDto) {
-    return 'This action adds a new vehicle';
+  constructor(
+    @InjectRepository(Vehicle)
+    private readonly vehicleRepository: Repository<Vehicle>,
+  ) {}
+
+  create(createVehicleDto: CreateVehicleDto, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const data = forceCompanyId(createVehicleDto, scope);
+    const vehicle = this.vehicleRepository.create({
+      ...data,
+      createdById: actor.userId,
+    });
+    return this.vehicleRepository.save(vehicle);
   }
 
-  findAll() {
-    return `This action returns all vehicle`;
+  findAll(actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    return this.vehicleRepository.find({
+      where: companyScopeFilter<Vehicle>(scope),
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} vehicle`;
+  async findOne(id: string, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const vehicle = await this.vehicleRepository.findOneBy(
+      withCompanyScopeWhere<Vehicle>({ id }, scope),
+    );
+    if (!vehicle) {
+      throw new NotFoundException(`Vehicle with ID ${id} not found`);
+    }
+    return vehicle;
   }
 
-  update(id: number, updateVehicleDto: UpdateVehicleDto) {
-    return `This action updates a #${id} vehicle`;
+  async update(id: string, updateVehicleDto: UpdateVehicleDto, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const vehicle = await this.findOne(id, actor);
+    const data = forceCompanyId({ ...updateVehicleDto }, scope);
+    Object.assign(vehicle, data, { updatedById: actor.userId });
+    return this.vehicleRepository.save(vehicle);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} vehicle`;
+  async remove(id: string, actor: Actor) {
+    const vehicle = await this.findOne(id, actor);
+    return this.vehicleRepository.remove(vehicle);
   }
 }

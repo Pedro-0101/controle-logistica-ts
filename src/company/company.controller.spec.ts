@@ -8,7 +8,18 @@ describe('CompanyController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CompanyController],
-      providers: [CompanyService],
+      providers: [
+        {
+          provide: CompanyService,
+          useValue: {
+            create: vi.fn(),
+            findAll: vi.fn(),
+            findOne: vi.fn(),
+            update: vi.fn(),
+            remove: vi.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<CompanyController>(CompanyController);

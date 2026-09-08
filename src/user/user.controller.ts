@@ -4,7 +4,8 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { UserService } from './user.service.js';
 import { CreateUserDto } from './dto/create-user.schema.js';
 import { UpdateUserDto } from './dto/update-user.schema.js';
-import { Public } from '../auth/decorators/public.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -12,7 +13,6 @@ import { Public } from '../auth/decorators/public.decorator.js';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @Public()
   @Post()
   @ApiOperation({
     summary: 'Criar usuário',
@@ -23,8 +23,11 @@ export class UserController {
     status: 400,
     description: 'Dados de entrada inválidos',
   })
-  create(@Body(new ZodValidationPipe(CreateUserDto)) createUserDto: CreateUserDto) {
-    return this.userService.create(createUserDto);
+  create(
+    @Body(new ZodValidationPipe(CreateUserDto)) createUserDto: CreateUserDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.userService.create(createUserDto, user);
   }
 
   @Get()
@@ -33,8 +36,8 @@ export class UserController {
     description: 'Retorna uma lista com todos os usuários cadastrados no sistema.',
   })
   @ZodResponse({ status: 200, type: [CreateUserDto] })
-  findAll() {
-    return this.userService.findAll();
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.userService.findAll(user);
   }
 
   @Get(':id')
@@ -52,8 +55,8 @@ export class UserController {
     status: 404,
     description: 'Usuário não encontrado',
   })
-  findOne(@Param('id') id: string) {
-    return this.userService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.userService.findOne(id, user);
   }
 
   @Patch(':id')
@@ -78,8 +81,9 @@ export class UserController {
   update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateUserDto)) updateUserDto: UpdateUserDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.userService.update(id, updateUserDto);
+    return this.userService.update(id, updateUserDto, user);
   }
 
   @Delete(':id')
@@ -100,7 +104,7 @@ export class UserController {
     status: 404,
     description: 'Usuário não encontrado',
   })
-  remove(@Param('id') id: string) {
-    return this.userService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.userService.remove(id, user);
   }
 }

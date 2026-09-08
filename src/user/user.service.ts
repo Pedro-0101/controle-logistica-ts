@@ -5,6 +5,13 @@ import bcrypt from 'bcryptjs';
 import { CreateUserDto } from './dto/create-user.schema.js';
 import { UpdateUserDto } from './dto/update-user.schema.js';
 import { User } from './entities/user.entity.js';
+import {
+  type Actor,
+  companyScopeFilter,
+  forceCompanyId,
+  resolveCompanyScope,
+  withCompanyScopeWhere,
+} from '../auth/company-scope.js';
 
 const SALT_ROUNDS = 10;
 
@@ -15,35 +22,44 @@ export class UserService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
-    const hashedPassword = await bcrypt.hash(createUserDto.password, SALT_ROUNDS);
+  async create(createUserDto: CreateUserDto, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const data = forceCompanyId(createUserDto, scope);
+    const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
     const user = this.userRepository.create({
-      ...createUserDto,
-      companyId: createUserDto.companyId ?? null,
+      ...data,
+      companyId: data.companyId ?? null,
       password: hashedPassword,
     });
     return this.userRepository.save(user);
   }
 
-  findAll() {
-    return this.userRepository.find();
+  findAll(actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    return this.userRepository.find({
+      where: companyScopeFilter<User>(scope),
+    });
   }
 
   findByEmail(email: string) {
     return this.userRepository.findOneBy({ email });
   }
 
-  async findOne(id: string) {
-    const user = await this.userRepository.findOneBy({ id });
+  async findOne(id: string, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const user = await this.userRepository.findOneBy(
+      withCompanyScopeWhere<User>({ id }, scope),
+    );
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
     return user;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.findOne(id);
-    const data = { ...updateUserDto };
+  async update(id: string, updateUserDto: UpdateUserDto, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const user = await this.findOne(id, actor);
+    const data = forceCompanyId({ ...updateUserDto }, scope);
     if (data.password) {
       data.password = await bcrypt.hash(data.password, SALT_ROUNDS);
     }
@@ -51,8 +67,8 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async remove(id: string) {
-    const user = await this.findOne(id);
+  async remove(id: string, actor: Actor) {
+    const user = await this.findOne(id, actor);
     return this.userRepository.remove(user);
   }
 }

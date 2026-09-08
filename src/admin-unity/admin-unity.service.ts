@@ -1,26 +1,63 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateAdminUnityDto } from './dto/create-admin-unity.dto.js';
 import { UpdateAdminUnityDto } from './dto/update-admin-unity.dto.js';
+import { AdminUnity } from './entities/admin-unity.entity.js';
+import {
+  type Actor,
+  companyScopeFilter,
+  forceCompanyId,
+  resolveCompanyScope,
+  withCompanyScopeWhere,
+} from '../auth/company-scope.js';
 
 @Injectable()
 export class AdminUnityService {
-  create(createAdminUnityDto: CreateAdminUnityDto) {
-    return 'This action adds a new adminUnity';
+  constructor(
+    @InjectRepository(AdminUnity)
+    private readonly adminUnityRepository: Repository<AdminUnity>,
+  ) {}
+
+  create(createAdminUnityDto: CreateAdminUnityDto, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const data = forceCompanyId(createAdminUnityDto, scope);
+    const adminUnity = this.adminUnityRepository.create(data);
+    return this.adminUnityRepository.save(adminUnity);
   }
 
-  findAll() {
-    return `This action returns all adminUnity`;
+  findAll(actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    return this.adminUnityRepository.find({
+      where: companyScopeFilter<AdminUnity>(scope),
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} adminUnity`;
+  async findOne(id: string, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const adminUnity = await this.adminUnityRepository.findOneBy(
+      withCompanyScopeWhere<AdminUnity>({ id }, scope),
+    );
+    if (!adminUnity) {
+      throw new NotFoundException(`AdminUnity with ID ${id} not found`);
+    }
+    return adminUnity;
   }
 
-  update(id: number, updateAdminUnityDto: UpdateAdminUnityDto) {
-    return `This action updates a #${id} adminUnity`;
+  async update(
+    id: string,
+    updateAdminUnityDto: UpdateAdminUnityDto,
+    actor: Actor,
+  ) {
+    const scope = resolveCompanyScope(actor);
+    const adminUnity = await this.findOne(id, actor);
+    const data = forceCompanyId({ ...updateAdminUnityDto }, scope);
+    Object.assign(adminUnity, data);
+    return this.adminUnityRepository.save(adminUnity);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} adminUnity`;
+  async remove(id: string, actor: Actor) {
+    const adminUnity = await this.findOne(id, actor);
+    return this.adminUnityRepository.remove(adminUnity);
   }
 }

@@ -4,6 +4,8 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
 @ApiTags('Movements')
 @ApiBearerAuth()
@@ -21,8 +23,11 @@ export class MovementController {
     status: 400,
     description: 'Dados de entrada inválidos',
   })
-  create(@Body(new ZodValidationPipe(CreateMovementDto)) createMovementDto: CreateMovementDto) {
-    return this.movementService.create(createMovementDto);
+  create(
+    @Body(new ZodValidationPipe(CreateMovementDto)) createMovementDto: CreateMovementDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.movementService.create(createMovementDto, user);
   }
 
   @Get()
@@ -31,8 +36,8 @@ export class MovementController {
     description: 'Retorna uma lista com todos os movimentos registrados no sistema.',
   })
   @ZodResponse({ status: 200, type: [CreateMovementDto] })
-  findAll() {
-    return this.movementService.findAll();
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.movementService.findAll(user);
   }
 
   @Get(':id')
@@ -50,8 +55,8 @@ export class MovementController {
     status: 404,
     description: 'Movimento não encontrado',
   })
-  findOne(@Param('id') id: string) {
-    return this.movementService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.movementService.findOne(id, user);
   }
 
   @Patch(':id')
@@ -76,8 +81,9 @@ export class MovementController {
   update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateMovementDto)) updateMovementDto: UpdateMovementDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.movementService.update(id, updateMovementDto);
+    return this.movementService.update(id, updateMovementDto, user);
   }
 
   @Delete(':id')
@@ -98,7 +104,7 @@ export class MovementController {
     status: 404,
     description: 'Movimento não encontrado',
   })
-  remove(@Param('id') id: string) {
-    return this.movementService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.movementService.remove(id, user);
   }
 }
