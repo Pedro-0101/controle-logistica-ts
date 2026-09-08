@@ -1,4 +1,2 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateVehicleDto } from './create-vehicle.dto.js';
-
-export class UpdateVehicleDto extends PartialType(CreateVehicleDto) {}
+export { updateVehicleSchema, UpdateVehicleDto } from './update-vehicle.schema.js';
+export type { UpdateVehicleDtoType } from './update-vehicle.schema.js';
