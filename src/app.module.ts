@@ -14,13 +14,17 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'controle-logistica-ts',
-    }),
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    ObserveModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        appKey: configService.get<string>('OBS_KEY') ?? '',
+        appSecret: configService.get<string>('OBS_SECRET') ?? '',
+        serviceId: 'controle-logistica-ts',
+      }),
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
