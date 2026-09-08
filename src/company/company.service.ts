@@ -4,10 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { CreateCompanyDto } from './dto/create-company.dto.js';
 import { UpdateCompanyDto } from './dto/update-company.dto.js';
 import { Company } from './entities/company.entity.js';
+import { User } from '../user/entities/user.entity.js';
+import { UserService } from '../user/user.service.js';
 import { type Actor, resolveCompanyScope } from '../auth/company-scope.js';
 
 @Injectable()
@@ -15,6 +17,8 @@ export class CompanyService {
   constructor(
     @InjectRepository(Company)
     private readonly companyRepository: Repository<Company>,
+    private readonly userService: UserService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(createCompanyDto: CreateCompanyDto, actor: Actor) {
@@ -24,11 +28,31 @@ export class CompanyService {
         'Somente o usuário root pode criar empresas',
       );
     }
-    const company = this.companyRepository.create({
-      ...createCompanyDto,
-      createdById: actor.userId,
+
+    const { admin, ...companyData } = createCompanyDto;
+
+    return this.dataSource.transaction(async (manager) => {
+      const company = await manager.save(
+        manager.create(Company, {
+          ...companyData,
+          createdById: actor.userId,
+        }),
+      );
+
+      const hashedPassword = await this.userService.hashPassword(admin.password);
+      const adminUser = await manager.save(
+        manager.create(User, {
+          name: admin.name,
+          email: admin.email,
+          password: hashedPassword,
+          role: 'admin',
+          companyId: company.id,
+        }),
+      );
+
+      const { password: _password, ...safeAdmin } = adminUser;
+      return { company, admin: safeAdmin };
     });
-    return this.companyRepository.save(company);
   }
 
   findAll(actor: Actor) {

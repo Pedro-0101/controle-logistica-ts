@@ -4,6 +4,7 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { CompanyService } from './company.service.js';
 import { CreateCompanyDto } from './dto/create-company.schema.js';
 import { UpdateCompanyDto } from './dto/update-company.schema.js';
+import { CreateCompanyResponseDto } from './dto/create-company-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -16,11 +17,16 @@ export class CompanyController {
   @Post()
   @ApiOperation({
     summary: 'Criar empresa',
-    description: 'Cria uma nova empresa. Apenas o usuário root pode executar esta operação.',
+    description:
+      'Cria uma nova empresa e, na mesma requisição, o usuário administrador vinculado a ela. Apenas o usuário root pode executar esta operação.',
   })
-  @ZodResponse({ status: 201, type: CreateCompanyDto })
+  @ZodResponse({ status: 201, type: CreateCompanyResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   @ApiResponse({ status: 403, description: 'Proibido para usuários não-root' })
+  @ApiResponse({
+    status: 409,
+    description: 'Empresa já possui um administrador',
+  })
   create(
     @Body(new ZodValidationPipe(CreateCompanyDto)) createCompanyDto: CreateCompanyDto,
     @CurrentUser() user: AuthenticatedUser,

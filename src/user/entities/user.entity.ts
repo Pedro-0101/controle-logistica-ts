@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { ApiProperty, ApiHideProperty } from '@nestjs/swagger';
 
@@ -13,6 +14,10 @@ const enumUsers = [
   'supervisor'
 ]
 
+@Index('UQ_users_company_admin', ['companyId'], {
+  unique: true,
+  where: `"role" = 'admin' AND "companyId" IS NOT NULL`,
+})
 @Entity('users')
 export class User {
   @ApiProperty({

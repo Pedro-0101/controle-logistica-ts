@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcryptjs';
@@ -25,13 +30,22 @@ export class UserService {
   async create(createUserDto: CreateUserDto, actor: Actor) {
     const scope = resolveCompanyScope(actor);
     const data = forceCompanyId(createUserDto, scope);
-    const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
+
+    if (data.role === 'admin' && data.companyId) {
+      await this.assertSingleCompanyAdmin(data.companyId);
+    }
+
+    const hashedPassword = await this.hashPassword(data.password);
     const user = this.userRepository.create({
       ...data,
       companyId: data.companyId ?? null,
       password: hashedPassword,
     });
     return this.userRepository.save(user);
+  }
+
+  hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, SALT_ROUNDS);
   }
 
   findAll(actor: Actor) {
@@ -60,8 +74,27 @@ export class UserService {
     const scope = resolveCompanyScope(actor);
     const user = await this.findOne(id, actor);
     const data = forceCompanyId({ ...updateUserDto }, scope);
+
+    if (user.role === 'admin' && data.role && data.role !== 'admin') {
+      throw new ForbiddenException(
+        'O administrador da empresa não pode ter o papel alterado',
+      );
+    }
+
+    const targetCompanyId = data.companyId ?? user.companyId;
+    const targetRole = data.role ?? user.role;
+    if (targetRole === 'admin' && targetCompanyId) {
+      const existingAdmin = await this.userRepository.findOneBy({
+        companyId: targetCompanyId,
+        role: 'admin',
+      });
+      if (existingAdmin && existingAdmin.id !== user.id) {
+        throw new ConflictException('Esta empresa já possui um administrador');
+      }
+    }
+
     if (data.password) {
-      data.password = await bcrypt.hash(data.password, SALT_ROUNDS);
+      data.password = await this.hashPassword(data.password);
     }
     Object.assign(user, data);
     return this.userRepository.save(user);
@@ -69,6 +102,19 @@ export class UserService {
 
   async remove(id: string, actor: Actor) {
     const user = await this.findOne(id, actor);
+    if (user.role === 'admin') {
+      throw new ForbiddenException('Usuários administradores não podem ser removidos');
+    }
     return this.userRepository.remove(user);
+  }
+
+  private async assertSingleCompanyAdmin(companyId: string) {
+    const existingAdmin = await this.userRepository.findOneBy({
+      companyId,
+      role: 'admin',
+    });
+    if (existingAdmin) {
+      throw new ConflictException('Esta empresa já possui um administrador');
+    }
   }
 }

@@ -1,6 +1,24 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
 
+export const createCompanyAdminSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required').meta({
+      description: 'Nome completo do usuário administrador da empresa',
+      examples: ['João Silva'],
+    }),
+    email: z.email('Invalid email address').meta({
+      description: 'Email do usuário administrador (deve ser único)',
+      examples: ['joao@empresa.com'],
+      format: 'email',
+    }),
+    password: z.string().min(6, 'Password must be at least 6 characters').meta({
+      description: 'Senha do usuário administrador (mínimo 6 caracteres)',
+      examples: ['senha123'],
+    }),
+  })
+  .meta({ id: 'CreateCompanyAdminDto' });
+
 export const createCompanySchema = z.object({
   name: z.string().min(1, 'Name is required').meta({
     description: 'Nome fantasia da empresa',
@@ -31,6 +49,9 @@ export const createCompanySchema = z.object({
     description: 'Status ativo/inativo da empresa',
     examples: [true],
     default: 'true',
+  }),
+  admin: createCompanyAdminSchema.meta({
+    description: 'Dados do usuário administrador criado junto com a empresa',
   }),
 }).meta({ id: 'CreateCompanyDto' });
 

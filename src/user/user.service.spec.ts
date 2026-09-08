@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserService } from './user.service.js';
 import { User } from './entities/user.entity.js';
 import type { Actor } from '../auth/company-scope.js';
@@ -111,6 +115,61 @@ describe('UserService', () => {
       );
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ companyId: 'empresa-x' }),
+      );
+    });
+
+    it('não permite criar um segundo admin para a mesma empresa', async () => {
+      repository.findOneBy.mockResolvedValue({ id: 'admin-1' });
+      await expect(
+        service.create(
+          {
+            name: 'João',
+            email: 'joao@empresa.com',
+            password: 'senha123',
+            role: 'admin',
+            companyId: 'empresa-x',
+          },
+          rootActor,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('update', () => {
+    it('não permite rebaixar o administrador da empresa', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'admin',
+        companyId: 'company-1',
+      });
+      await expect(
+        service.update('1', { role: 'user' }, rootActor),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('não permite promover usuário quando a empresa já tem admin', async () => {
+      repository.findOneBy
+        .mockResolvedValueOnce({
+          id: '1',
+          role: 'user',
+          companyId: 'empresa-x',
+        })
+        .mockResolvedValueOnce({ id: 'admin-1' });
+      await expect(
+        service.update(
+          '1',
+          { role: 'admin', companyId: 'empresa-x' },
+          rootActor,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('remove', () => {
+    it('não permite remover usuário administrador', async () => {
+      repository.findOneBy.mockResolvedValue({ id: '1', role: 'admin' });
+      await expect(service.remove('1', rootActor)).rejects.toThrow(
+        ForbiddenException,
       );
     });
   });
