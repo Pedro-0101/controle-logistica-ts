@@ -1,26 +1,42 @@
-import { Injectable } from '@nestjs/common';
-import { CreateMovementDto } from './dto/create-movement.dto.js';
-import { UpdateMovementDto } from './dto/update-movement.dto.js';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CreateMovementDto } from './dto/create-movement.schema.js';
+import { UpdateMovementDto } from './dto/update-movement.schema.js';
+import { Movement } from './entities/movement.entity.js';
 
 @Injectable()
 export class MovementService {
+  constructor(
+    @InjectRepository(Movement)
+    private readonly movementRepository: Repository<Movement>,
+  ) {}
+
   create(createMovementDto: CreateMovementDto) {
-    return 'This action adds a new movement';
+    const movement = this.movementRepository.create(createMovementDto);
+    return this.movementRepository.save(movement);
   }
 
   findAll() {
-    return `This action returns all movement`;
+    return this.movementRepository.find();
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} movement`;
+  async findOne(id: string) {
+    const movement = await this.movementRepository.findOneBy({ id });
+    if (!movement) {
+      throw new NotFoundException(`Movement with ID ${id} not found`);
+    }
+    return movement;
   }
 
-  update(id: number, updateMovementDto: UpdateMovementDto) {
-    return `This action updates a #${id} movement`;
+  async update(id: string, updateMovementDto: UpdateMovementDto) {
+    const movement = await this.findOne(id);
+    Object.assign(movement, updateMovementDto);
+    return this.movementRepository.save(movement);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} movement`;
+  async remove(id: string) {
+    const movement = await this.findOne(id);
+    return this.movementRepository.remove(movement);
   }
 }

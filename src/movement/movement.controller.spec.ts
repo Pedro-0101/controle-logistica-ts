@@ -8,7 +8,18 @@ describe('MovementController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MovementController],
-      providers: [MovementService],
+      providers: [
+        {
+          provide: MovementService,
+          useValue: {
+            create: vi.fn(),
+            findAll: vi.fn(),
+            findOne: vi.fn(),
+            update: vi.fn(),
+            remove: vi.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<MovementController>(MovementController);

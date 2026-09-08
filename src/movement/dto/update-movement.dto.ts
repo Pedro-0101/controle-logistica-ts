@@ -1,4 +1,2 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateMovementDto } from './create-movement.dto.js';
-
-export class UpdateMovementDto extends PartialType(CreateMovementDto) {}
+export { updateMovementSchema, UpdateMovementDto } from './update-movement.schema.js';
+export type { UpdateMovementDtoType } from './update-movement.schema.js';
