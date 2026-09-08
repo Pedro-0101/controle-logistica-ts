@@ -1,20 +1,24 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ZodResponse, ZodValidationPipe } from 'zod-nest';
 import { AuthService, type SafeUser } from './auth.service.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { LoginDto } from './dto/login.schema.js';
 import { LoginResponseDto } from './dto/login-response.schema.js';
+import { MeResponseDto } from './dto/me-response.schema.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
+import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -40,5 +44,20 @@ export class AuthController {
     @Req() req: Request,
   ) {
     return this.authService.login(req.user as SafeUser);
+  }
+
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Retornar usuário autenticado',
+    description: 'Retorna os dados do usuário extraídos do token JWT.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Não autenticado',
+  })
+  @ZodResponse({ status: 200, type: MeResponseDto })
+  me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
+    return user;
   }
 }

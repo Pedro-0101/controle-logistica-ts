@@ -34,4 +34,8 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
     };
   }
+
+  getClaimsFromToken(token: string): JwtPayload {
+    return this.jwtService.verify<JwtPayload>(token);
+  }
 }
