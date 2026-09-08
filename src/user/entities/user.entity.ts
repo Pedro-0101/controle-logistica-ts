@@ -51,11 +51,13 @@ export class User {
   role: string;
 
   @ApiProperty({
-    description: 'ID da empresa vinculada ao usuário',
+    description: 'ID da empresa vinculada ao usuário (opcional para administradores/suporte)',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    required: false,
+    nullable: true,
   })
-  @Column()
-  companyId: string;
+  @Column({ type: 'varchar', nullable: true })
+  companyId: string | null;
 
   @ApiProperty({
     description: 'Data e hora da criação do registro',

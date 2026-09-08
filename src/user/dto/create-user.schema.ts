@@ -20,10 +20,14 @@ export const createUserSchema = z.object({
     examples: ['user'],
     default: 'user',
   }),
-  companyId: z.string().min(1, 'Company ID is required').meta({
-    description: 'ID da empresa vinculada ao usuário',
-    examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-  }),
+  companyId: z
+    .string()
+    .min(1, 'Company ID is required')
+    .meta({
+      description: 'ID da empresa vinculada ao usuário (opcional para administradores/suporte)',
+      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    })
+    .nullish(),
 }).meta({ id: 'CreateUserDto' });
 
 export class CreateUserDto extends createZodDto(createUserSchema) {}

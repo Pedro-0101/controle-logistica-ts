@@ -1,15 +1,18 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { UserService } from './user.service.js';
 import { CreateUserDto } from './dto/create-user.schema.js';
 import { UpdateUserDto } from './dto/update-user.schema.js';
+import { Public } from '../auth/decorators/public.decorator.js';
 
 @ApiTags('Users')
+@ApiBearerAuth()
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
+  @Public()
   @Post()
   @ApiOperation({
     summary: 'Criar usuário',

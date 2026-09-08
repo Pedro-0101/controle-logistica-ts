@@ -14,6 +14,8 @@ async function bootstrap() {
     .setDescription('API para gestão de usuários, empresas e unidades administrativas')
     .setVersion('1.0')
     .addTag('Users', 'Operações de gestão de usuários')
+    .addTag('Auth', 'Autenticação e tokens JWT')
+    .addBearerAuth()
     .build();
 
   const rawDocument = SwaggerModule.createDocument(app, config);

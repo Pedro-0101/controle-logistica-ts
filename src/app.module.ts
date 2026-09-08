@@ -9,6 +9,7 @@ import { CompanyModule } from './company/company.module.js';
 import { AdminUnityModule } from './admin-unity/admin-unity.module.js';
 import { VehicleModule } from './vehicle/vehicle.module.js';
 import { MovementModule } from './movement/movement.module.js';
+import { AuthModule } from './auth/auth.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -45,6 +46,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AdminUnityModule,
     VehicleModule,
     MovementModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

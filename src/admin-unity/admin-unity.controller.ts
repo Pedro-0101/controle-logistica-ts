@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { AdminUnityService } from './admin-unity.service.js';
 import { CreateAdminUnityDto } from './dto/create-admin-unity.dto.js';
 import { UpdateAdminUnityDto } from './dto/update-admin-unity.dto.js';
 
+@ApiBearerAuth()
 @Controller('admin-unity')
 export class AdminUnityController {
   constructor(private readonly adminUnityService: AdminUnityService) {}

@@ -1,11 +1,12 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 
 @ApiTags('Movements')
+@ApiBearerAuth()
 @Controller('movement')
 export class MovementController {
   constructor(private readonly movementService: MovementService) {}

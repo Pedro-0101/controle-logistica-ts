@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { CompanyService } from './company.service.js';
 import { CreateCompanyDto } from './dto/create-company.dto.js';
 import { UpdateCompanyDto } from './dto/update-company.dto.js';
 
+@ApiBearerAuth()
 @Controller('company')
 export class CompanyController {
   constructor(private readonly companyService: CompanyService) {}
