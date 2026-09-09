@@ -16,8 +16,9 @@ export const createCompanyAdminSchema = z
       description: 'Senha do usuário administrador (mínimo 6 caracteres)',
       examples: ['senha123'],
     }),
-  })
-  .meta({ id: 'CreateCompanyAdminDto' });
+  });
+
+export class CreateCompanyAdminDto extends createZodDto(createCompanyAdminSchema) {}
 
 export const createCompanySchema = z.object({
   name: z.string().min(1, 'Name is required').meta({
