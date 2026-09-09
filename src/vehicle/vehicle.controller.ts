@@ -4,6 +4,7 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { VehicleService } from './vehicle.service.js';
 import { CreateVehicleDto } from './dto/create-vehicle.schema.js';
 import { UpdateVehicleDto } from './dto/update-vehicle.schema.js';
+import { VehicleResponseDto } from './dto/vehicle-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -18,7 +19,7 @@ export class VehicleController {
     summary: 'Criar veículo',
     description: 'Cria um novo veículo vinculado à empresa do usuário autenticado.',
   })
-  @ZodResponse({ status: 201, type: CreateVehicleDto })
+  @ZodResponse({ status: 201, type: VehicleResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   create(
     @Body(new ZodValidationPipe(CreateVehicleDto)) createVehicleDto: CreateVehicleDto,
@@ -32,7 +33,7 @@ export class VehicleController {
     summary: 'Listar veículos',
     description: 'Retorna os veículos da empresa do usuário autenticado.',
   })
-  @ZodResponse({ status: 200, type: [CreateVehicleDto] })
+  @ZodResponse({ status: 200, type: [VehicleResponseDto] })
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.vehicleService.findAll(user);
   }
@@ -47,7 +48,7 @@ export class VehicleController {
     description: 'UUID do veículo',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateVehicleDto })
+  @ZodResponse({ status: 200, type: VehicleResponseDto })
   @ApiResponse({ status: 404, description: 'Veículo não encontrado' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.vehicleService.findOne(id, user);
@@ -63,7 +64,7 @@ export class VehicleController {
     description: 'UUID do veículo',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateVehicleDto })
+  @ZodResponse({ status: 200, type: VehicleResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   @ApiResponse({ status: 404, description: 'Veículo não encontrado' })
   update(

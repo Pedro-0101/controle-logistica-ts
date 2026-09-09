@@ -4,6 +4,7 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { UserService } from './user.service.js';
 import { CreateUserDto } from './dto/create-user.schema.js';
 import { UpdateUserDto } from './dto/update-user.schema.js';
+import { UserResponseDto } from './dto/user-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -18,7 +19,7 @@ export class UserController {
     summary: 'Criar usuário',
     description: 'Cria um novo usuário no sistema com nome, email, senha, função e empresa vinculada.',
   })
-  @ZodResponse({ status: 201, type: CreateUserDto })
+  @ZodResponse({ status: 201, type: UserResponseDto })
   @ApiResponse({
     status: 400,
     description: 'Dados de entrada inválidos',
@@ -35,7 +36,7 @@ export class UserController {
     summary: 'Listar todos os usuários',
     description: 'Retorna uma lista com todos os usuários cadastrados no sistema.',
   })
-  @ZodResponse({ status: 200, type: [CreateUserDto] })
+  @ZodResponse({ status: 200, type: [UserResponseDto] })
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.userService.findAll(user);
   }
@@ -50,7 +51,7 @@ export class UserController {
     description: 'UUID do usuário',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateUserDto })
+  @ZodResponse({ status: 200, type: UserResponseDto })
   @ApiResponse({
     status: 404,
     description: 'Usuário não encontrado',
@@ -69,7 +70,7 @@ export class UserController {
     description: 'UUID do usuário',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateUserDto })
+  @ZodResponse({ status: 200, type: UserResponseDto })
   @ApiResponse({
     status: 400,
     description: 'Dados de entrada inválidos',

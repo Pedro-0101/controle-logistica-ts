@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { MovementService } from './movement.service.js';
 import { Movement } from './entities/movement.entity.js';
+import { CameraService } from '../camera/camera.service.js';
+import { AnprService } from '../anpr/anpr.service.js';
+import { VehicleService } from '../vehicle/vehicle.service.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const companyActor: Actor = {
@@ -30,6 +33,18 @@ describe('MovementService', () => {
         {
           provide: getRepositoryToken(Movement),
           useValue: repository,
+        },
+        {
+          provide: CameraService,
+          useValue: { findOne: vi.fn() },
+        },
+        {
+          provide: AnprService,
+          useValue: { reconhecerCamera: vi.fn() },
+        },
+        {
+          provide: VehicleService,
+          useValue: { findOrCreateByPlate: vi.fn() },
         },
       ],
     }).compile();

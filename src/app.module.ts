@@ -10,6 +10,8 @@ import { AdminUnityModule } from './admin-unity/admin-unity.module.js';
 import { VehicleModule } from './vehicle/vehicle.module.js';
 import { MovementModule } from './movement/movement.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CameraModule } from './camera/camera.module.js';
+import { AnprModule } from './anpr/anpr.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -47,6 +49,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     VehicleModule,
     MovementModule,
     AuthModule,
+    CameraModule,
+    AnprModule,
   ],
   controllers: [AppController],
   providers: [AppService],

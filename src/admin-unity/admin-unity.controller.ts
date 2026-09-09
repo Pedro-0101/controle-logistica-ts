@@ -4,6 +4,7 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { AdminUnityService } from './admin-unity.service.js';
 import { CreateAdminUnityDto } from './dto/create-admin-unity.schema.js';
 import { UpdateAdminUnityDto } from './dto/update-admin-unity.schema.js';
+import { AdminUnityResponseDto } from './dto/admin-unity-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -18,7 +19,7 @@ export class AdminUnityController {
     summary: 'Criar unidade administrativa',
     description: 'Cria uma nova unidade administrativa vinculada à empresa do usuário autenticado.',
   })
-  @ZodResponse({ status: 201, type: CreateAdminUnityDto })
+  @ZodResponse({ status: 201, type: AdminUnityResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   create(
     @Body(new ZodValidationPipe(CreateAdminUnityDto)) createAdminUnityDto: CreateAdminUnityDto,
@@ -32,7 +33,7 @@ export class AdminUnityController {
     summary: 'Listar unidades administrativas',
     description: 'Retorna as unidades administrativas da empresa do usuário autenticado.',
   })
-  @ZodResponse({ status: 200, type: [CreateAdminUnityDto] })
+  @ZodResponse({ status: 200, type: [AdminUnityResponseDto] })
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.adminUnityService.findAll(user);
   }
@@ -47,7 +48,7 @@ export class AdminUnityController {
     description: 'UUID da unidade administrativa',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateAdminUnityDto })
+  @ZodResponse({ status: 200, type: AdminUnityResponseDto })
   @ApiResponse({ status: 404, description: 'Unidade não encontrada' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.adminUnityService.findOne(id, user);
@@ -63,7 +64,7 @@ export class AdminUnityController {
     description: 'UUID da unidade administrativa',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateAdminUnityDto })
+  @ZodResponse({ status: 200, type: AdminUnityResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   @ApiResponse({ status: 404, description: 'Unidade não encontrada' })
   update(

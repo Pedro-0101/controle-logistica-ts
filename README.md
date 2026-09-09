@@ -1,114 +1,153 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Controle Logística — API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API de controle de **entrada e saída de veículos** em unidades administrativas.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Backend **NestJS + PostgreSQL**, com reconhecimento automático de placas (ANPR)
+delegado a um **microserviço Python** (PaddleOCR) que acessa câmeras IP.
 
-## Description
+## Arquitetura
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+Frontend ──HTTP──> NestJS (esta API) ──HTTP──> Microserviço ANPR (Python/PaddleOCR)
+                        │                              │
+                        └──────── PostgreSQL ──────────┘  (captura snapshot da câmera IP
+                                                           e devolve a placa)
 ```
 
-## Compile and run the project
+- **NestJS**: autenticação JWT, CRUD (empresas, unidades, veículos, câmeras, usuários)
+  e registro das movimentações de entrada/saída.
+- **anpr-service/**: recebe dados da câmera (ou uma imagem) e retorna a placa
+  normalizada (formato Mercosul `ABC1D23` ou antigo `ABC-1234`).
+- **PostgreSQL**: persistência.
+
+## Como subir
 
 ```bash
-# development
-$ npm run start
+# 1. Banco de dados
+docker compose up -d
 
-# watch mode
-$ npm run start:dev
+# 2. Microserviço ANPR (Python)
+cd anpr-service
+pip install -r requirements.txt
+uvicorn app.main:app --port 8000
 
-# production mode
-$ npm run start:prod
+# 3. API NestJS
+npm install
+npm run start:dev
+
+# 4. Usuário admin inicial (uma única vez)
+npm run seed:admin
 ```
 
-## Run tests
+Documentação interativa (Swagger): http://localhost:3000/docs
+
+## Variáveis de ambiente (`.env`)
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `DB_HOST` / `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DATABASE` | Conexão com o PostgreSQL | `localhost` / `5434` / `postgres` / `postgres` / `controle_logistica` |
+| `JWT_SECRET` | Chave de assinatura dos tokens | — |
+| `JWT_EXPIRATION` | Validade do token JWT | `1d` |
+| `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin criado pelo seed | `admin@sistema.com` / `admin123` |
+| `ANPR_SERVICE_URL` | URL do microserviço Python | `http://localhost:8000` |
+| `PORT` | Porta da API NestJS | `3000` |
+| `OBS_KEY` / `OBS_SECRET` | Observabilidade (NestJS Observe) | — |
+
+> Atenção: o `docker-compose.yml` expõe o Postgres na porta **5434** no host,
+> por isso o `.env` usa `DB_PORT=5434`.
+
+## Autenticação
+
+Todas as rotas (exceto `/auth/login` e o healthcheck) exigem o header
+`Authorization: Bearer <token>`.
+
+```
+POST /auth/login   { "email": "...", "password": "..." }
+→ 200 { "access_token": "...", "user": { "id", "name", "email", "role", "companyId" } }
+```
+
+O escopo dos dados é por empresa (`companyId` do token): usuários com `companyId`
+definido só enxergam/alteram registros da própria empresa; o `admin` (sem empresa)
+enxerga tudo.
+
+## Fluxo de reconhecimento de placa (ANPR)
+
+O front não acessa a câmera nem roda OCR — isso fica no microserviço Python. O fluxo:
+
+1. **Cadastrar a câmera IP** (uma vez por unidade):
+
+   ```
+   POST /camera
+   {
+     "adminUnityId": "...", "name": "Portaria 1", "ip": "192.168.11.241",
+     "port": 80, "username": "admin", "password": "...",
+     "authType": "digest",           // "digest" ou "basic"
+     "snapshotUrl": null,            // opcional: se omitido, o ANPR tenta auto-descobrir
+     "companyId": "..."
+   }
+   ```
+
+2. **Registrar a passagem** do veículo (o backend captura a imagem e reconhece a placa):
+
+   ```
+   POST /movement/from-camera
+   {
+     "cameraId": "...",              // câmera cadastrada no passo 1
+     "adminUnityId": "...",
+     "type": "entry",                // "entry" | "exit"
+     "companyId": "...",
+     "dateTime": "2026-08-29T12:00:00.000Z",  // opcional (default: agora)
+     "purpose": "Entrega de mercadoria",       // opcional
+     "driverName": "João Silva",               // opcional
+     "notes": "..."                             // opcional
+   }
+   → 201 { id, adminUnityId, vehicleId, type, dateTime, status: "open", companyId, ... }
+   ```
+
+   Internamente o backend: captura o snapshot da câmera → chama o ANPR → normaliza a
+   placa → **cria o veículo se não existir** (com `code` = placa e `type` = `visitor`)
+   → registra a movimentação.
+
+3. **Rotas auxiliares de ANPR** (para testar/integrar sem criar movimento):
+
+   ```
+   POST /anpr/reconhecer-camera/:cameraId   → { placa, formato, confianca, raw, ... }
+   POST /anpr/reconhecer-imagem   { "imagemBase64": "..." }   → { placa, formato, confianca, raw }
+   ```
+
+## Endpoints principais
+
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/auth/login` | Autenticação (retorna JWT) |
+| GET | `/auth/me` | Usuário autenticado |
+| POST | `/company` | Criar empresa |
+| GET | `/admin-unity` | Listar unidades administrativas |
+| POST | `/vehicle` | Criar veículo |
+| POST | `/camera` | Cadastrar câmera IP |
+| POST | `/movement` | Criar movimento (entrada/saída) com veículo já existente |
+| POST | `/movement/from-camera` | Criar movimento a partir da câmera (ANPR) |
+| GET | `/movement` | Listar movimentos |
+| POST | `/anpr/reconhecer-camera/:id` | Reconhecer placa pela câmera |
+| POST | `/anpr/reconhecer-imagem` | Reconhecer placa em imagem base64 |
+
+Todas as entidades (`company`, `admin-unity`, `vehicle`, `camera`, `movement`)
+possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
+
+## Códigos de erro
+
+| Código | Significado |
+|---|---|
+| `400` | Dados de entrada inválidos |
+| `401` | Não autenticado / credenciais inválidas |
+| `404` | Registro não encontrado |
+| `422` | Placa não reconhecida na imagem |
+| `502` | Falha na câmera ou microserviço ANPR indisponível |
+
+## Testes e lint
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run test     # vitest
+npm run lint     # oxlint
+npm run build    # nest build
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).

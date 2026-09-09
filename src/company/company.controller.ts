@@ -5,6 +5,7 @@ import { CompanyService } from './company.service.js';
 import { CreateCompanyDto } from './dto/create-company.schema.js';
 import { UpdateCompanyDto } from './dto/update-company.schema.js';
 import { CreateCompanyResponseDto } from './dto/create-company-response.schema.js';
+import { CompanyResponseDto } from './dto/company-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -40,7 +41,7 @@ export class CompanyController {
     description:
       'Retorna todas as empresas para o usuário root, ou apenas a própria empresa para os demais usuários.',
   })
-  @ZodResponse({ status: 200, type: [CreateCompanyDto] })
+  @ZodResponse({ status: 200, type: [CompanyResponseDto] })
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.companyService.findAll(user);
   }
@@ -55,7 +56,7 @@ export class CompanyController {
     description: 'UUID da empresa',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateCompanyDto })
+  @ZodResponse({ status: 200, type: CompanyResponseDto })
   @ApiResponse({ status: 404, description: 'Empresa não encontrada' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.companyService.findOne(id, user);
@@ -71,7 +72,7 @@ export class CompanyController {
     description: 'UUID da empresa',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateCompanyDto })
+  @ZodResponse({ status: 200, type: CompanyResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
   @ApiResponse({ status: 404, description: 'Empresa não encontrada' })
   update(

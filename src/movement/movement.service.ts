@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
+import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { Movement } from './entities/movement.entity.js';
 import {
@@ -11,12 +12,18 @@ import {
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
+import { CameraService } from '../camera/camera.service.js';
+import { AnprService } from '../anpr/anpr.service.js';
+import { VehicleService } from '../vehicle/vehicle.service.js';
 
 @Injectable()
 export class MovementService {
   constructor(
     @InjectRepository(Movement)
     private readonly movementRepository: Repository<Movement>,
+    private readonly cameraService: CameraService,
+    private readonly anprService: AnprService,
+    private readonly vehicleService: VehicleService,
   ) {}
 
   create(createMovementDto: CreateMovementDto, actor: Actor) {
@@ -27,6 +34,41 @@ export class MovementService {
       createdById: actor.userId,
     });
     return this.movementRepository.save(movement);
+  }
+
+  async createFromCamera(
+    createMovementFromCameraDto: CreateMovementFromCameraDto,
+    actor: Actor,
+  ) {
+    const camera = await this.cameraService.findOne(
+      createMovementFromCameraDto.cameraId,
+      actor,
+    );
+    const reconhecida = await this.anprService.reconhecerCamera(camera);
+
+    const scope = resolveCompanyScope(actor);
+    const companyId =
+      scope.mode === 'company' ? scope.companyId : createMovementFromCameraDto.companyId;
+    const vehicle = await this.vehicleService.findOrCreateByPlate(
+      reconhecida.placa,
+      companyId,
+      actor,
+    );
+
+    return this.create(
+      {
+        adminUnityId: createMovementFromCameraDto.adminUnityId,
+        vehicleId: vehicle.id,
+        type: createMovementFromCameraDto.type,
+        dateTime: createMovementFromCameraDto.dateTime ?? new Date().toISOString(),
+        status: 'open',
+        companyId,
+        purpose: createMovementFromCameraDto.purpose,
+        driverName: createMovementFromCameraDto.driverName,
+        notes: createMovementFromCameraDto.notes,
+      } as CreateMovementDto,
+      actor,
+    );
   }
 
   findAll(actor: Actor) {

@@ -1,19 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { MovementController } from './movement.controller.js';
-import { MovementService } from './movement.service.js';
+import { CameraController } from './camera.controller.js';
+import { CameraService } from './camera.service.js';
 
-describe('MovementController', () => {
-  let controller: MovementController;
+describe('CameraController', () => {
+  let controller: CameraController;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [MovementController],
+      controllers: [CameraController],
       providers: [
         {
-          provide: MovementService,
+          provide: CameraService,
           useValue: {
             create: vi.fn(),
-            createFromCamera: vi.fn(),
             findAll: vi.fn(),
             findOne: vi.fn(),
             update: vi.fn(),
@@ -23,7 +22,7 @@ describe('MovementController', () => {
       ],
     }).compile();
 
-    controller = module.get<MovementController>(MovementController);
+    controller = module.get<CameraController>(CameraController);
   });
 
   it('should be defined', () => {

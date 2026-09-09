@@ -36,6 +36,22 @@ export class VehicleService {
     });
   }
 
+  async findOrCreateByPlate(plate: string, companyId: string, actor: Actor) {
+    const existing = await this.vehicleRepository.findOneBy({ plate });
+    if (existing) {
+      return existing;
+    }
+    const vehicle = this.vehicleRepository.create({
+      plate,
+      code: plate,
+      type: 'visitor',
+      active: true,
+      companyId,
+      createdById: actor.userId,
+    });
+    return this.vehicleRepository.save(vehicle);
+  }
+
   async findOne(id: string, actor: Actor) {
     const scope = resolveCompanyScope(actor);
     const vehicle = await this.vehicleRepository.findOneBy(

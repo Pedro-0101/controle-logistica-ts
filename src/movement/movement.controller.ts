@@ -3,7 +3,9 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@ne
 import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
+import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
+import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -18,7 +20,7 @@ export class MovementController {
     summary: 'Criar movimento',
     description: 'Registra a entrada ou saída de um veículo em uma unidade administrativa.',
   })
-  @ZodResponse({ status: 201, type: CreateMovementDto })
+  @ZodResponse({ status: 201, type: MovementResponseDto })
   @ApiResponse({
     status: 400,
     description: 'Dados de entrada inválidos',
@@ -30,12 +32,31 @@ export class MovementController {
     return this.movementService.create(createMovementDto, user);
   }
 
+  @Post('from-camera')
+  @ApiOperation({
+    summary: 'Criar movimento a partir da câmera (ANPR)',
+    description:
+      'Captura o snapshot da câmera, reconhece a placa do veículo e registra a entrada ou saída.',
+  })
+  @ZodResponse({ status: 201, type: MovementResponseDto })
+  @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
+  @ApiResponse({ status: 404, description: 'Câmera não encontrada' })
+  @ApiResponse({ status: 422, description: 'Placa não reconhecida na imagem' })
+  @ApiResponse({ status: 502, description: 'Falha ao capturar imagem da câmera' })
+  createFromCamera(
+    @Body(new ZodValidationPipe(CreateMovementFromCameraDto))
+    createMovementFromCameraDto: CreateMovementFromCameraDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.movementService.createFromCamera(createMovementFromCameraDto, user);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Listar todos os movimentos',
     description: 'Retorna uma lista com todos os movimentos registrados no sistema.',
   })
-  @ZodResponse({ status: 200, type: [CreateMovementDto] })
+  @ZodResponse({ status: 200, type: [MovementResponseDto] })
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.movementService.findAll(user);
   }
@@ -50,7 +71,7 @@ export class MovementController {
     description: 'UUID do movimento',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateMovementDto })
+  @ZodResponse({ status: 200, type: MovementResponseDto })
   @ApiResponse({
     status: 404,
     description: 'Movimento não encontrado',
@@ -69,7 +90,7 @@ export class MovementController {
     description: 'UUID do movimento',
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
-  @ZodResponse({ status: 200, type: CreateMovementDto })
+  @ZodResponse({ status: 200, type: MovementResponseDto })
   @ApiResponse({
     status: 400,
     description: 'Dados de entrada inválidos',
