@@ -12,6 +12,7 @@ import { MovementModule } from './movement/movement.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CameraModule } from './camera/camera.module.js';
 import { AnprModule } from './anpr/anpr.module.js';
+import { PointModule } from './point/point.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -51,6 +52,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthModule,
     CameraModule,
     AnprModule,
+    PointModule,
   ],
   controllers: [AppController],
   providers: [AppService],

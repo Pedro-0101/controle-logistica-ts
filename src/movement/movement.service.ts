@@ -57,7 +57,7 @@ export class MovementService {
 
     return this.create(
       {
-        adminUnityId: createMovementFromCameraDto.adminUnityId,
+        pointId: createMovementFromCameraDto.pointId,
         vehicleId: vehicle.id,
         type: createMovementFromCameraDto.type,
         dateTime: createMovementFromCameraDto.dateTime ?? new Date().toISOString(),

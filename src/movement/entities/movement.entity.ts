@@ -20,11 +20,12 @@ export class Movement {
   id: string;
 
   @ApiProperty({
-    description: 'ID da unidade administrativa vinculada ao movimento',
+    description: 'ID do ponto vinculado ao movimento',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    required: false,
   })
-  @Column()
-  adminUnityId: string;
+  @Column({ nullable: true })
+  pointId: string;
 
   @ApiProperty({
     description: 'ID do veículo vinculado ao movimento',

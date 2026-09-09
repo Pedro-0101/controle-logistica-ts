@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
 
 export const createMovementSchema = z.object({
-  adminUnityId: z.string().min(1, 'Admin unity ID is required').meta({
-    description: 'ID da unidade administrativa vinculada ao movimento',
+  pointId: z.string().optional().meta({
+    description: 'ID do ponto vinculado ao movimento',
     examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
   }),
   vehicleId: z.string().min(1, 'Vehicle ID is required').meta({

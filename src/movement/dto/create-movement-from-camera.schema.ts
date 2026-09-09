@@ -7,8 +7,8 @@ export const createMovementFromCameraSchema = z
       description: 'ID da câmera a ser usada no reconhecimento da placa',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
     }),
-    adminUnityId: z.string().min(1, 'Admin unity ID is required').meta({
-      description: 'ID da unidade administrativa vinculada ao movimento',
+    pointId: z.string().optional().meta({
+      description: 'ID do ponto vinculado ao movimento',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
     }),
     type: z.enum(['entry', 'exit']).meta({
