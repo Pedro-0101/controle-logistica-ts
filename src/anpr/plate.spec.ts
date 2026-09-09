@@ -35,4 +35,19 @@ describe('normalizarPlaca', () => {
   it('deve retornar null para texto sem placa', () => {
     expect(normalizarPlaca('sem placa aqui')).toBeNull();
   });
+
+  it('deve corrigir letra no lugar de dígito (confusão de OCR)', () => {
+    expect(normalizarPlaca('ABCI234')).toEqual({
+      valor: 'ABC1Z34',
+      formato: 'mercosul',
+    });
+  });
+
+  it('deve retornar null para sequência sem dígitos suficientes', () => {
+    expect(normalizarPlaca('ABCDEFG')).toBeNull();
+  });
+
+  it('deve retornar null quando não é possível ajustar para nenhum formato', () => {
+    expect(normalizarPlaca('ABC12C4')).toBeNull();
+  });
 });

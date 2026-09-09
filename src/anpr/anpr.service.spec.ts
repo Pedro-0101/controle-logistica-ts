@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import {
+  BadGatewayException,
+  BadRequestException,
+  InternalServerErrorException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AnprService } from './anpr.service.js';
 import type { Camera } from '../camera/entities/camera.entity.js';
 
@@ -87,6 +93,7 @@ describe('AnprService', () => {
 
     expect(result.placa).toBe('ABC1234');
     expect(result.cameraUrlEncontrada).toBe('http://192.168.11.241/snapshot.jpg');
+    expect(result.fotoPath).toBe('/data/imagens/x.jpg');
     expect(fetchMock).toHaveBeenCalledWith(
       'http://anpr:8000/reconhecer',
       expect.objectContaining({
@@ -101,11 +108,110 @@ describe('AnprService', () => {
     );
   });
 
+  it('reconhecerCamera deve incluir camera_url quando snapshotUrl existe', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        placa: 'ABC1234',
+        formato: 'antiga',
+        confianca: 0.95,
+        raw: 'ABC1234',
+      }),
+    });
+
+    await service.reconhecerCamera({
+      ...camera,
+      snapshotUrl: 'http://192.168.11.241/snapshot.jpg',
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      host: '192.168.11.241',
+      camera_url: 'http://192.168.11.241/snapshot.jpg',
+    });
+  });
+
   it('deve lançar BadGatewayException quando o serviço está indisponível', async () => {
     fetchMock.mockRejectedValue(new Error('connection refused'));
 
     await expect(service.reconhecerImagem('x')).rejects.toThrow(
       'Serviço ANPR indisponível',
+    );
+  });
+
+  describe('mapeamento de erros', () => {
+    const nonOkResponse = (status: number, detail?: unknown) => ({
+      ok: false,
+      status,
+      json: async () => ({ detail }),
+    });
+
+    it('status 400 deve virar BadRequestException com o detalhe', async () => {
+      fetchMock.mockResolvedValue(nonOkResponse(400, 'Imagem inválida'));
+
+      await expect(service.reconhecerImagem('x')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.reconhecerImagem('x')).rejects.toThrow('Imagem inválida');
+    });
+
+    it('status 422 deve virar UnprocessableEntityException', async () => {
+      fetchMock.mockResolvedValue(nonOkResponse(422, 'Placa não reconhecida'));
+
+      await expect(service.reconhecerImagem('x')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('status 502 deve virar BadGatewayException', async () => {
+      fetchMock.mockResolvedValue(nonOkResponse(502, 'Falha na câmera'));
+
+      await expect(service.reconhecerImagem('x')).rejects.toThrow(
+        BadGatewayException,
+      );
+    });
+
+    it('status desconhecido deve virar InternalServerErrorException', async () => {
+      fetchMock.mockResolvedValue(nonOkResponse(500));
+
+      await expect(service.reconhecerImagem('x')).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      await expect(service.reconhecerImagem('x')).rejects.toThrow(
+        'Erro no serviço ANPR (500)',
+      );
+    });
+
+    it('detalhe não-textual deve ser serializado em JSON', async () => {
+      fetchMock.mockResolvedValue(nonOkResponse(400, { campo: 'imagem' }));
+
+      await expect(service.reconhecerImagem('x')).rejects.toThrow('{"campo":"imagem"}');
+    });
+  });
+
+  it('deve usar http://localhost:8000 como fallback sem configuração', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        placa: 'ABC1234',
+        formato: 'antiga',
+        confianca: 0.95,
+        raw: 'ABC1234',
+      }),
+    });
+
+    const fallbackService = new AnprService({
+      get: vi.fn(() => undefined),
+    } as unknown as ConfigService);
+
+    await fallbackService.reconhecerImagem('base64fake');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/reconhecer-imagem',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 });

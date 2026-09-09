@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CompanyService } from './company.service.js';
 import { Company } from './entities/company.entity.js';
@@ -130,6 +130,64 @@ describe('CompanyService', () => {
       expect(result.company).toMatchObject({ name: 'X', id: 'new-id' });
       expect(result.admin).toMatchObject({ role: 'admin', companyId: 'new-id' });
       expect(result.admin).not.toHaveProperty('password');
+    });
+  });
+
+  describe('findOne', () => {
+    it('root deve buscar empresa por id', async () => {
+      repository.findOneBy.mockResolvedValue({ id: 'company-1' });
+      await service.findOne('company-1', rootActor);
+      expect(repository.findOneBy).toHaveBeenCalledWith({ id: 'company-1' });
+    });
+
+    it('usuário comum deve ver apenas a própria empresa', async () => {
+      repository.findOneBy.mockResolvedValue({ id: 'company-1' });
+      await service.findOne('company-1', companyActor);
+      expect(repository.findOneBy).toHaveBeenCalledWith({ id: 'company-1' });
+    });
+
+    it('usuário comum não deve acessar empresa de terceiros', async () => {
+      await expect(service.findOne('company-2', companyActor)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repository.findOneBy).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 404 quando a empresa não existe', async () => {
+      repository.findOneBy.mockResolvedValue(null);
+      await expect(service.findOne('company-1', rootActor)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('deve atualizar a empresa e registrar updatedById', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'company-1',
+        name: 'X',
+      });
+      await service.update(
+        'company-1',
+        { name: 'X Atualizada' } as never,
+        rootActor,
+      );
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'company-1',
+          name: 'X Atualizada',
+          updatedById: 'root-id',
+        }),
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('deve remover a empresa encontrada', async () => {
+      repository.findOneBy.mockResolvedValue({ id: 'company-1' });
+      await service.remove('company-1', rootActor);
+      expect(repository.remove).toHaveBeenCalledWith({ id: 'company-1' });
     });
   });
 });

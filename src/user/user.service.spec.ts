@@ -163,6 +163,49 @@ describe('UserService', () => {
         ),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('deve atualizar dados e salvar', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+      });
+      await service.update('1', { name: 'João Silva' }, companyActor);
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '1', name: 'João Silva' }),
+      );
+    });
+
+    it('deve re-hash da senha ao atualizá-la', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+      });
+      const hashSpy = vi
+        .spyOn(service, 'hashPassword')
+        .mockResolvedValue('senha-hash');
+
+      await service.update('1', { password: 'nova-senha' }, companyActor);
+
+      expect(hashSpy).toHaveBeenCalledWith('nova-senha');
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ password: 'senha-hash' }),
+      );
+    });
+  });
+
+  describe('findByEmail', () => {
+    it('deve buscar usuário pelo email', async () => {
+      repository.findOneBy.mockResolvedValue({ id: '1', email: 'a@b.com' });
+
+      await expect(service.findByEmail('a@b.com')).resolves.toEqual({
+        id: '1',
+        email: 'a@b.com',
+      });
+      expect(repository.findOneBy).toHaveBeenCalledWith({ email: 'a@b.com' });
+    });
   });
 
   describe('remove', () => {
@@ -170,6 +213,19 @@ describe('UserService', () => {
       repository.findOneBy.mockResolvedValue({ id: '1', role: 'admin' });
       await expect(service.remove('1', rootActor)).rejects.toThrow(
         ForbiddenException,
+      );
+    });
+
+    it('deve remover usuário não-administrador', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+      });
+      await service.remove('1', companyActor);
+
+      expect(repository.remove).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '1', role: 'user' }),
       );
     });
   });
