@@ -4,7 +4,7 @@ import { createZodDto } from 'zod-nest';
 export const reconhecerImagemSchema = z
   .object({
     imagemBase64: z.string().min(1, 'imagemBase64 is required').meta({
-      description: 'Imagem (JPEG/PNG) codificada em base64',
+      description: 'Imagem (JPEG/PNG) codificada em base64, sem o prefixo `data:image/...;base64,`',
       examples: ['/9j/4AAQSkZJRg...'],
     }),
   })

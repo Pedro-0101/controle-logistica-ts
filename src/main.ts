@@ -20,7 +20,10 @@ async function bootstrap() {
     .addTag('Vehicles', 'Veículos')
     .addTag('Cameras', 'Câmeras IP para reconhecimento de placas')
     .addTag('Movements', 'Entrada e saída de veículos')
-    .addTag('ANPR', 'Reconhecimento de placas (ANPR)')
+    .addTag(
+      'ANPR',
+      'Reconhecimento de placas (ANPR). O OCR é delegado a um microserviço Python (PaddleOCR) que captura o snapshot da câmera IP ou recebe a imagem em base64 e devolve a placa normalizada (Mercosul ou formato antigo).',
+    )
     .addBearerAuth()
     .build();
 

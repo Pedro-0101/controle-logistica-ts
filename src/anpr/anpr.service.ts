@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Camera } from '../camera/entities/camera.entity.js';
 
+/** Resposta normalizada do microserviço ANPR (Python/PaddleOCR). */
 export interface PlacaReconhecida {
   placa: string;
   formato: string;
@@ -26,6 +27,14 @@ interface ReconhecerCameraPayload {
   camera_url?: string;
 }
 
+/**
+ * Cliente do microserviço ANPR (Python/PaddleOCR).
+ *
+ * O backend NestJS NÃO faz OCR nem acessa a câmera diretamente: ele apenas
+ * encaminha os dados da câmera (ou uma imagem) ao microserviço Python, que é
+ * responsável por capturar o snapshot e rodar o reconhecimento da placa.
+ * A URL do serviço vem da variável de ambiente `ANPR_SERVICE_URL`.
+ */
 @Injectable()
 export class AnprService {
   private readonly baseUrl: string;
@@ -36,6 +45,10 @@ export class AnprService {
     ).replace(/\/+$/, '');
   }
 
+  /**
+   * Envia os dados de conexão da câmera ao microserviço, que captura o
+   * snapshot (usando a URL configurada ou auto-descoberta) e devolve a placa.
+   */
   async reconhecerCamera(camera: Camera): Promise<PlacaReconhecida> {
     const payload: ReconhecerCameraPayload = {
       host: camera.ip,
@@ -50,6 +63,10 @@ export class AnprService {
     return this.post('/reconhecer', payload);
   }
 
+  /**
+   * Envia uma imagem já capturada (base64) ao microserviço para reconhecer a
+   * placa, sem envolver câmera. Útil para testes e integrações manuais.
+   */
   async reconhecerImagem(imagemBase64: string): Promise<PlacaReconhecida> {
     return this.post('/reconhecer-imagem', { imagem_base64: imagemBase64 });
   }
