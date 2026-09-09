@@ -62,4 +62,3 @@ __pycache__/
 .venv/
 venv/
 anpr-service/data/
-tsconfig.build.tsbuildinfo
