@@ -63,7 +63,9 @@ class PlacaRecognizer:
         for pagina in resultado:
             textos = pagina["rec_texts"]
             scores = pagina["rec_scores"]
-            boxes = pagina.get("rec_boxes") or pagina.get("rec_polys")
+            boxes = pagina.get("rec_boxes")
+            if boxes is None:
+                boxes = pagina.get("rec_polys")
             for indice, (texto, score) in enumerate(
                 zip(textos, scores, strict=False)
             ):
