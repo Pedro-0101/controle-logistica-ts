@@ -28,6 +28,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         appKey: configService.get<string>('OBS_KEY') ?? '',
         appSecret: configService.get<string>('OBS_SECRET') ?? '',
         serviceId: 'controle-logistica-ts',
+        http: {
+          ignore: (req: { url?: string }) => req.url?.startsWith('/anpr') ?? false,
+        },
       }),
     }),
     TypeOrmModule.forRootAsync({
