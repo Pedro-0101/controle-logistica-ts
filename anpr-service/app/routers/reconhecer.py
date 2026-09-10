@@ -68,6 +68,7 @@ async def reconhecer_camera(body: ReconhecerCameraIn) -> ReconhecerCameraOut:
         formato=melhor.placa.formato,
         confianca=melhor.confianca,
         raw=melhor.raw,
+        box=list(melhor.box) if melhor.box else None,
         camera_url_encontrada=url_encontrada,
         foto_path=foto_path,
     )
@@ -96,6 +97,7 @@ async def reconhecer_imagem(body: ReconhecerImagemIn) -> PlacaOut:
         formato=melhor.placa.formato,
         confianca=melhor.confianca,
         raw=melhor.raw,
+        box=list(melhor.box) if melhor.box else None,
     )
 
 

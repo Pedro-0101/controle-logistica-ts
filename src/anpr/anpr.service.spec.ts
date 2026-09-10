@@ -56,6 +56,7 @@ describe('AnprService', () => {
         formato: 'mercosul',
         confianca: 0.99,
         raw: 'ABC1D23',
+        box: [120, 240, 320, 300],
       }),
     });
 
@@ -66,6 +67,7 @@ describe('AnprService', () => {
       formato: 'mercosul',
       confianca: 0.99,
       raw: 'ABC1D23',
+      box: [120, 240, 320, 300],
       cameraUrlEncontrada: undefined,
       fotoPath: undefined,
     });
@@ -73,6 +75,23 @@ describe('AnprService', () => {
       'http://anpr:8000/reconhecer-imagem',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('reconhecerImagem deve aceitar resposta sem box', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        placa: 'ABC1D23',
+        formato: 'mercosul',
+        confianca: 0.99,
+        raw: 'ABC1D23',
+      }),
+    });
+
+    const result = await service.reconhecerImagem('base64fake');
+
+    expect(result.box).toBeUndefined();
   });
 
   it('reconhecerCamera deve enviar os dados da câmera ao microserviço', async () => {

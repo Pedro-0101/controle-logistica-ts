@@ -8,6 +8,10 @@ class PlacaOut(BaseModel):
     formato: str = Field(..., description="Formato: 'mercosul' ou 'antiga'")
     confianca: float = Field(..., description="Score de confiança do OCR (0-1)")
     raw: str = Field(..., description="Texto bruto capturado pelo OCR")
+    box: list[float] | None = Field(
+        None,
+        description="Bounding box da placa [x1, y1, x2, y2] em pixels da imagem de entrada",
+    )
 
 
 class ReconhecerCameraIn(BaseModel):

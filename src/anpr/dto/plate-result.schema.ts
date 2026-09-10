@@ -20,6 +20,14 @@ export const plateResultSchema = z
       description: 'Texto bruto retornado pelo OCR, antes da normalização (pode conter erros de leitura)',
       examples: ['ABC1D23'],
     }),
+    box: z
+      .array(z.number())
+      .optional()
+      .meta({
+        description:
+          'Bounding box da placa no formato [x1, y1, x2, y2], em pixels da imagem de entrada. Presente quando o OCR localiza a região do texto da placa',
+        examples: [[120, 240, 320, 300]],
+      }),
     cameraUrlEncontrada: z.string().optional().meta({
       description:
         'URL de snapshot que retornou a imagem válida. Presente apenas no reconhecimento via câmera (ausente quando a imagem é enviada em base64)',

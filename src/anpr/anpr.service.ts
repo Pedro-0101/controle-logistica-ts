@@ -14,6 +14,7 @@ export interface PlacaReconhecida {
   formato: string;
   confianca: number;
   raw: string;
+  box?: number[];
   cameraUrlEncontrada?: string;
   fotoPath?: string;
 }
@@ -93,6 +94,9 @@ export class AnprService {
       formato: String(data.formato),
       confianca: Number(data.confianca),
       raw: String(data.raw),
+      box: Array.isArray(data.box)
+        ? (data.box as unknown[]).map((value) => Number(value))
+        : undefined,
       cameraUrlEncontrada:
         data.camera_url_encontrada != null
           ? String(data.camera_url_encontrada)

@@ -18,6 +18,27 @@ class CandidatoPlaca:
     placa: Placa
     confianca: float
     raw: str
+    box: tuple[float, float, float, float] | None = None
+
+
+def _extrair_box(boxes, indice: int) -> tuple[float, float, float, float] | None:
+    """Converte o box do PaddleOCR (rec_boxes ou rec_polys) para (x1, y1, x2, y2).
+
+    Aceita tanto um retângulo [x1, y1, x2, y2] quanto um polígono de 4 pontos
+    [[x, y], ...] (flatten em 8 valores), convertendo para o bounding box mínimo.
+    """
+    try:
+        box = boxes[indice]
+    except (IndexError, TypeError):
+        return None
+    coords = [float(v) for v in np.asarray(box).reshape(-1)]
+    if len(coords) == 4:
+        return (coords[0], coords[1], coords[2], coords[3])
+    if len(coords) >= 8:
+        xs = coords[0::2]
+        ys = coords[1::2]
+        return (min(xs), min(ys), max(xs), max(ys))
+    return None
 
 
 class PlacaRecognizer:
@@ -40,13 +61,21 @@ class PlacaRecognizer:
         resultado = self._ocr.predict(imagem)
         candidatos: list[CandidatoPlaca] = []
         for pagina in resultado:
-            for texto, score in zip(
-                pagina["rec_texts"], pagina["rec_scores"], strict=False
+            textos = pagina["rec_texts"]
+            scores = pagina["rec_scores"]
+            boxes = pagina.get("rec_boxes") or pagina.get("rec_polys")
+            for indice, (texto, score) in enumerate(
+                zip(textos, scores, strict=False)
             ):
                 placa = normalizar_placa(texto)
                 if placa is not None:
                     candidatos.append(
-                        CandidatoPlaca(placa=placa, confianca=float(score), raw=texto)
+                        CandidatoPlaca(
+                            placa=placa,
+                            confianca=float(score),
+                            raw=texto,
+                            box=_extrair_box(boxes, indice) if boxes is not None else None,
+                        )
                     )
         return candidatos
 
