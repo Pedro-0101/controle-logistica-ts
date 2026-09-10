@@ -2,6 +2,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service.js';
 import { UserService } from '../user/user.service.js';
+import { CompanyService } from '../company/company.service.js';
 
 const user = {
   id: 'user-1',
@@ -12,9 +13,21 @@ const user = {
   password: 'hashed-password',
 };
 
+const company = {
+  id: 'company-1',
+  name: 'Empresa XYZ',
+  companyName: 'XYZ Comércio e Serviços Ltda',
+  cnpj: '12.345.678/0001-99',
+  stateRegistration: '123.456.789.012',
+  address: 'Rua Example, 123',
+  email: 'contato@empresa.com.br',
+  active: true,
+};
+
 describe('AuthService', () => {
   let service: AuthService;
   const userService = { findByEmail: vi.fn() };
+  const companyService = { findById: vi.fn() };
   const jwtService = { sign: vi.fn(), verify: vi.fn() };
   let compareSpy: ReturnType<typeof vi.spyOn>;
 
@@ -23,6 +36,7 @@ describe('AuthService', () => {
     compareSpy = vi.spyOn(bcrypt, 'compare');
     service = new AuthService(
       userService as unknown as UserService,
+      companyService as unknown as CompanyService,
       jwtService as unknown as JwtService,
     );
   });
@@ -70,10 +84,11 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('assina o token com as claims do usuário e retorna dados seguros', () => {
+    it('assina o token com as claims do usuário e retorna dados seguros', async () => {
       jwtService.sign.mockReturnValue('token-xyz');
+      companyService.findById.mockResolvedValue(company);
 
-      const result = service.login(user);
+      const result = await service.login(user);
 
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 'user-1',
@@ -81,6 +96,7 @@ describe('AuthService', () => {
         role: 'admin',
         companyId: 'company-1',
       });
+      expect(companyService.findById).toHaveBeenCalledWith('company-1');
       expect(result).toEqual({
         access_token: 'token-xyz',
         user: {
@@ -90,7 +106,51 @@ describe('AuthService', () => {
           role: 'admin',
           companyId: 'company-1',
         },
+        company,
       });
+    });
+
+    it('retorna company null quando o usuário não tem empresa', async () => {
+      jwtService.sign.mockReturnValue('token-xyz');
+
+      const result = await service.login({ ...user, companyId: null });
+
+      expect(companyService.findById).not.toHaveBeenCalled();
+      expect(result.company).toBeNull();
+    });
+  });
+
+  describe('me', () => {
+    it('retorna o usuário autenticado com a empresa vinculada', async () => {
+      companyService.findById.mockResolvedValue(company);
+
+      const result = await service.me({
+        userId: 'user-1',
+        email: 'joao@empresa.com',
+        role: 'admin',
+        companyId: 'company-1',
+      });
+
+      expect(companyService.findById).toHaveBeenCalledWith('company-1');
+      expect(result).toEqual({
+        userId: 'user-1',
+        email: 'joao@empresa.com',
+        role: 'admin',
+        companyId: 'company-1',
+        company,
+      });
+    });
+
+    it('retorna company null quando não há empresa vinculada', async () => {
+      const result = await service.me({
+        userId: 'user-1',
+        email: 'joao@empresa.com',
+        role: 'admin',
+        companyId: null,
+      });
+
+      expect(companyService.findById).not.toHaveBeenCalled();
+      expect(result.company).toBeNull();
     });
   });
 

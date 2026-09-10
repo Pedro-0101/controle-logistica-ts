@@ -79,8 +79,16 @@ Todas as rotas (exceto `/auth/login` e o healthcheck) exigem o header
 
 ```
 POST /auth/login   { "email": "...", "password": "..." }
-→ 200 { "access_token": "...", "user": { "id", "name", "email", "role", "companyId" } }
+→ 200 { "access_token": "...", "user": { "id", "name", "email", "role", "companyId" },
+        "company": { "id", "name", "companyName", "cnpj", "stateRegistration",
+                     "address", "email", "active" } | null }
+
+GET /auth/me      → 200 { "userId", "email", "role", "companyId",
+                          "company": { ... } | null }
 ```
+
+> As respostas de `/auth/login` e `/auth/me` incluem também os dados da empresa
+> vinculada ao usuário (`company`), ou `null` quando o usuário não possui empresa.
 
 O escopo dos dados é por empresa (`companyId` do token): usuários com `companyId`
 definido só enxergam/alteram registros da própria empresa; o `admin` (sem empresa)

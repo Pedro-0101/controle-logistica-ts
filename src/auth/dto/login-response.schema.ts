@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
+import { companySummarySchema } from '../../company/dto/company-summary.schema.js';
 
 export const loginResponseSchema = z
   .object({
@@ -35,6 +36,9 @@ export const loginResponseSchema = z
           .nullish(),
       })
       .meta({ description: 'Dados básicos do usuário autenticado' }),
+    company: companySummarySchema
+      .nullish()
+      .meta({ description: 'Dados da empresa vinculada ao usuário (ou null)' }),
   })
   .meta({ id: 'LoginResponseDto' });
 

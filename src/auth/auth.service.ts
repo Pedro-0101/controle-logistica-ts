@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
+import { CompanyService } from '../company/company.service.js';
+import type { CompanySummaryDtoType } from '../company/dto/company-summary.schema.js';
 import { User } from '../user/entities/user.entity.js';
 import { UserService } from '../user/user.service.js';
-import type { JwtPayload } from './strategies/jwt.strategy.js';
+import type { AuthenticatedUser, JwtPayload } from './strategies/jwt.strategy.js';
 
 export type SafeUser = Omit<User, 'password'>;
 
@@ -11,6 +13,7 @@ export type SafeUser = Omit<User, 'password'>;
 export class AuthService {
   constructor(
     private readonly userService: UserService,
+    private readonly companyService: CompanyService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -23,13 +26,14 @@ export class AuthService {
     return null;
   }
 
-  login(user: SafeUser) {
+  async login(user: SafeUser) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       companyId: user.companyId,
     };
+    const company = await this.findCompanySummary(user.companyId);
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -39,10 +43,38 @@ export class AuthService {
         role: user.role,
         companyId: user.companyId,
       },
+      company,
     };
+  }
+
+  async me(user: AuthenticatedUser) {
+    const company = await this.findCompanySummary(user.companyId);
+    return { ...user, company };
   }
 
   getClaimsFromToken(token: string): JwtPayload {
     return this.jwtService.verify<JwtPayload>(token);
+  }
+
+  private async findCompanySummary(
+    companyId: string | null,
+  ): Promise<CompanySummaryDtoType | null> {
+    if (!companyId) {
+      return null;
+    }
+    const company = await this.companyService.findById(companyId);
+    if (!company) {
+      return null;
+    }
+    return {
+      id: company.id,
+      name: company.name,
+      companyName: company.companyName,
+      cnpj: company.cnpj,
+      stateRegistration: company.stateRegistration,
+      address: company.address,
+      email: company.email,
+      active: company.active,
+    };
   }
 }

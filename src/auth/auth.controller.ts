@@ -57,7 +57,7 @@ export class AuthController {
     description: 'Não autenticado',
   })
   @ZodResponse({ status: 200, type: MeResponseDto })
-  me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
-    return user;
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.me(user);
   }
 }

@@ -55,6 +55,10 @@ export class CompanyService {
     });
   }
 
+  findById(id: string) {
+    return this.companyRepository.findOneBy({ id });
+  }
+
   findAll(actor: Actor) {
     const scope = resolveCompanyScope(actor);
     if (scope.mode === 'company') {

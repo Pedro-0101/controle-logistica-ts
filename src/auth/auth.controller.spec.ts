@@ -6,7 +6,7 @@ import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  const authService = { login: vi.fn() };
+  const authService = { login: vi.fn(), me: vi.fn() };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -24,24 +24,26 @@ describe('AuthController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('login delega ao authService com req.user', () => {
+  it('login delega ao authService com req.user', async () => {
     const req = { user: { id: 'user-1', email: 'a@b.com' } };
-    authService.login.mockReturnValue({ access_token: 'token-xyz' });
+    authService.login.mockResolvedValue({ access_token: 'token-xyz' });
 
-    expect(controller.login({} as never, req as never)).toEqual({
+    await expect(controller.login({} as never, req as never)).resolves.toEqual({
       access_token: 'token-xyz',
     });
     expect(authService.login).toHaveBeenCalledWith(req.user);
   });
 
-  it('me retorna o usuário autenticado', () => {
+  it('me delega ao authService.me com o usuário autenticado', async () => {
     const user: AuthenticatedUser = {
       userId: 'user-1',
       email: 'joao@empresa.com',
       role: 'admin',
       companyId: 'company-1',
     };
+    authService.me.mockResolvedValue({ ...user, company: null });
 
-    expect(controller.me(user)).toBe(user);
+    await expect(controller.me(user)).resolves.toEqual({ ...user, company: null });
+    expect(authService.me).toHaveBeenCalledWith(user);
   });
 });

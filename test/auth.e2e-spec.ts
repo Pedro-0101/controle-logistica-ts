@@ -12,6 +12,7 @@ import { LocalStrategy } from './../src/auth/strategies/local.strategy.js';
 import { JwtStrategy } from './../src/auth/strategies/jwt.strategy.js';
 import { JwtAuthGuard } from './../src/auth/guards/jwt-auth.guard.js';
 import { UserService } from './../src/user/user.service.js';
+import { CompanyService } from './../src/company/company.service.js';
 
 @Controller()
 class ProtectedController {
@@ -50,6 +51,7 @@ describe('Auth (e2e)', () => {
         LocalStrategy,
         JwtStrategy,
         { provide: UserService, useValue: { findByEmail } },
+        { provide: CompanyService, useValue: { findById: vi.fn() } },
         {
           provide: ConfigService,
           useValue: { getOrThrow: vi.fn(() => 'test-secret') },

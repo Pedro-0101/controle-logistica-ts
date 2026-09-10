@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
+import { companySummarySchema } from '../../company/dto/company-summary.schema.js';
 
 export const meResponseSchema = z
   .object({
@@ -23,6 +24,9 @@ export const meResponseSchema = z
         examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
       })
       .nullish(),
+    company: companySummarySchema
+      .nullish()
+      .meta({ description: 'Dados da empresa vinculada ao usuário (ou null)' }),
   })
   .meta({ id: 'MeResponseDto' });
 
