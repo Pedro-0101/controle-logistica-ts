@@ -11,6 +11,10 @@ export const cameraResponseSchema = z
       description: 'ID da unidade administrativa vinculada à câmera',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
     }),
+    pointId: z.string().meta({
+      description: 'ID do ponto (entrada/saída) vinculado à câmera',
+      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    }),
     name: z.string().meta({
       description: 'Nome da câmera',
       examples: ['Câmera Portaria 1'],

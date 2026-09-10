@@ -14,8 +14,8 @@ Frontend ──HTTP──> NestJS (esta API) ──HTTP──> Microserviço ANP
                                                            e devolve a placa)
 ```
 
-- **NestJS**: autenticação JWT, CRUD (empresas, unidades, veículos, câmeras, usuários)
-  e registro das movimentações de entrada/saída.
+- **NestJS**: autenticação JWT, CRUD (empresas, unidades, pontos, veículos, câmeras,
+  usuários) e registro das movimentações de entrada/saída.
 - **anpr-service/**: recebe dados da câmera (ou uma imagem) e retorna a placa
   normalizada (formato Mercosul `ABC1D23` ou antigo `ABC-1234`).
 - **PostgreSQL**: persistência.
@@ -74,12 +74,13 @@ enxerga tudo.
 
 O front não acessa a câmera nem roda OCR — isso fica no microserviço Python. O fluxo:
 
-1. **Cadastrar a câmera IP** (uma vez por unidade):
+1. **Cadastrar a câmera IP** (uma vez por unidade, vinculada a um ponto):
 
    ```
    POST /camera
    {
-     "adminUnityId": "...", "name": "Portaria 1", "ip": "192.168.11.241",
+     "adminUnityId": "...", "pointId": "...", "name": "Portaria 1",
+     "ip": "192.168.11.241",
      "port": 80, "username": "admin", "password": "...",
      "authType": "digest",           // "digest" ou "basic"
      "snapshotUrl": null,            // opcional: se omitido, o ANPR tenta auto-descobrir
@@ -87,31 +88,38 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
    }
    ```
 
-2. **Registrar a passagem** do veículo (o backend captura a imagem e reconhece a placa):
+   > O `pointId` identifica o ponto (portão) e seu `type` (`entry` | `exit` | `both`)
+   > define o tipo da movimentação. Cadastre o ponto antes via `POST /point`.
+
+2. **Registrar a passagem** do veículo — o front envia **apenas o `cameraId`**
+   (nada sobre o veículo); o backend captura a imagem, reconhece a placa e registra:
 
    ```
    POST /movement/from-camera
    {
      "cameraId": "...",              // câmera cadastrada no passo 1
-     "adminUnityId": "...",
-     "type": "entry",                // "entry" | "exit"
-     "companyId": "...",
+     "type": "entry",                // opcional; OBRIGATÓRIO se o ponto for "both"
+     "companyId": "...",             // opcional; OBRIGATÓRIO para admin (sem empresa no token)
      "dateTime": "2026-08-29T12:00:00.000Z",  // opcional (default: agora)
      "purpose": "Entrega de mercadoria",       // opcional
      "driverName": "João Silva",               // opcional
      "notes": "..."                             // opcional
    }
-   → 201 { id, adminUnityId, vehicleId, type, dateTime, status: "open", companyId, ... }
+   → 201 { "movement": { id, pointId, vehicleId, type, dateTime, status, ... },
+           "vehicle":  { id, plate, code, type, ... } }
    ```
 
    Internamente o backend: captura o snapshot da câmera → chama o ANPR → normaliza a
    placa → **cria o veículo se não existir** (com `code` = placa e `type` = `visitor`)
-   → registra a movimentação.
+   → registra a movimentação e devolve o movimento **com** os dados do veículo.
+
+   O tipo (`entry`/`exit`) é resolvido a partir do `type` do ponto vinculado à câmera;
+   se o ponto for `both`, o `type` deve ser informado no payload (senão retorna 400).
 
 3. **Rotas auxiliares de ANPR** (para testar/integrar sem criar movimento):
 
    ```
-   POST /anpr/reconhecer-camera/:cameraId   → { placa, formato, confianca, raw, ... }
+   POST /anpr/reconhecer-camera/:id   → { placa, formato, confianca, raw, ... }
    POST /anpr/reconhecer-imagem   { "imagemBase64": "..." }   → { placa, formato, confianca, raw }
    ```
 
@@ -124,6 +132,7 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
 | POST | `/company` | Criar empresa |
 | GET | `/admin-unity` | Listar unidades administrativas |
 | POST | `/vehicle` | Criar veículo |
+| POST | `/point` | Criar ponto (portão; entrada/saída/both) |
 | POST | `/camera` | Cadastrar câmera IP |
 | POST | `/movement` | Criar movimento (entrada/saída) com veículo já existente |
 | POST | `/movement/from-camera` | Criar movimento a partir da câmera (ANPR) |
@@ -131,7 +140,7 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
 | POST | `/anpr/reconhecer-camera/:id` | Reconhecer placa pela câmera |
 | POST | `/anpr/reconhecer-imagem` | Reconhecer placa em imagem base64 |
 
-Todas as entidades (`company`, `admin-unity`, `vehicle`, `camera`, `movement`)
+Todas as entidades (`company`, `admin-unity`, `point`, `vehicle`, `camera`, `movement`)
 possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
 
 ## Códigos de erro

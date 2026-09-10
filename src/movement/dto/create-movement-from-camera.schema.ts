@@ -7,16 +7,14 @@ export const createMovementFromCameraSchema = z
       description: 'ID da câmera a ser usada no reconhecimento da placa',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
     }),
-    pointId: z.string().optional().meta({
-      description: 'ID do ponto vinculado ao movimento',
-      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-    }),
-    type: z.enum(['entry', 'exit']).meta({
-      description: 'Tipo do movimento (entrada ou saída)',
+    type: z.enum(['entry', 'exit']).optional().meta({
+      description:
+        'Tipo do movimento (entrada ou saída). Obrigatório apenas quando o ponto vinculado à câmera é do tipo "both".',
       examples: ['entry'],
     }),
-    companyId: z.string().min(1, 'Company ID is required').meta({
-      description: 'ID da empresa vinculada ao movimento',
+    companyId: z.string().min(1).optional().meta({
+      description:
+        'ID da empresa vinculada ao movimento. Obrigatório apenas para usuários admin sem empresa no token.',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
     }),
     dateTime: z.iso.datetime().optional().meta({

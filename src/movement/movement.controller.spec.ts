@@ -45,10 +45,16 @@ describe('MovementController', () => {
   });
 
   it('createFromCamera delega ao service com dto e usuário', () => {
-    const dto = { cameraId: 'camera-1', type: 'entry', companyId: 'company-1' };
-    service.createFromCamera.mockReturnValue({ id: '1' });
+    const dto = { cameraId: 'camera-1' };
+    service.createFromCamera.mockReturnValue({
+      movement: { id: '1' },
+      vehicle: { id: 'v-1' },
+    });
 
-    expect(controller.createFromCamera(dto as never, user)).toEqual({ id: '1' });
+    expect(controller.createFromCamera(dto as never, user)).toEqual({
+      movement: { id: '1' },
+      vehicle: { id: 'v-1' },
+    });
     expect(service.createFromCamera).toHaveBeenCalledWith(dto, user);
   });
 

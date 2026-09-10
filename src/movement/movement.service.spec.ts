@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { MovementService } from './movement.service.js';
 import { Movement } from './entities/movement.entity.js';
 import { CameraService } from '../camera/camera.service.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
+import { PointService } from '../point/point.service.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const rootActor: Actor = {
@@ -34,6 +35,7 @@ describe('MovementService', () => {
   const cameraService = { findOne: vi.fn() };
   const anprService = { reconhecerCamera: vi.fn() };
   const vehicleService = { findOrCreateByPlate: vi.fn() };
+  const pointService = { findOne: vi.fn() };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -48,6 +50,7 @@ describe('MovementService', () => {
         { provide: CameraService, useValue: cameraService },
         { provide: AnprService, useValue: anprService },
         { provide: VehicleService, useValue: vehicleService },
+        { provide: PointService, useValue: pointService },
       ],
     }).compile();
 
@@ -76,8 +79,6 @@ describe('MovementService', () => {
   describe('createFromCamera', () => {
     const dto = {
       cameraId: 'camera-1',
-      pointId: 'point-1',
-      type: 'entry',
       companyId: 'company-x',
       dateTime: '2026-08-29T12:00:00.000Z',
       purpose: 'Entrega',
@@ -86,27 +87,34 @@ describe('MovementService', () => {
     } as never;
 
     beforeEach(() => {
-      cameraService.findOne.mockResolvedValue({ id: 'camera-1' });
+      cameraService.findOne.mockResolvedValue({ id: 'camera-1', pointId: 'point-1' });
+      pointService.findOne.mockResolvedValue({ id: 'point-1', type: 'entry' });
       anprService.reconhecerCamera.mockResolvedValue({ placa: 'ABC1D23' });
       vehicleService.findOrCreateByPlate.mockResolvedValue({ id: 'vehicle-1' });
       repository.save.mockResolvedValue({ id: 'mov-1' });
     });
 
-    it('deve orquestrar câmera → ANPR → veículo → movimento', async () => {
-      await service.createFromCamera(dto, companyActor);
+    it('deve orquestrar câmera → ponto → ANPR → veículo → movimento', async () => {
+      const result = await service.createFromCamera(dto, companyActor);
 
       expect(cameraService.findOne).toHaveBeenCalledWith('camera-1', companyActor);
+      expect(pointService.findOne).toHaveBeenCalledWith('point-1', companyActor);
       expect(anprService.reconhecerCamera).toHaveBeenCalledWith({
         id: 'camera-1',
+        pointId: 'point-1',
       });
       expect(vehicleService.findOrCreateByPlate).toHaveBeenCalledWith(
         'ABC1D23',
         'company-1',
         companyActor,
       );
+      expect(result).toEqual({
+        movement: { id: 'mov-1' },
+        vehicle: { id: 'vehicle-1' },
+      });
     });
 
-    it('usuário comum deve registrar o movimento na própria empresa', async () => {
+    it('usuário comum deve registrar na própria empresa com pointId da câmera e type do ponto', async () => {
       await service.createFromCamera(dto, companyActor);
 
       expect(repository.create).toHaveBeenCalledWith(
@@ -134,6 +142,36 @@ describe('MovementService', () => {
           companyId: 'company-x',
           createdById: 'root-id',
         }),
+      );
+    });
+
+    it('root sem companyId no payload deve lançar 400', async () => {
+      await expect(
+        service.createFromCamera(
+          { ...(dto as object), companyId: undefined } as never,
+          rootActor,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('ponto "both" sem type no payload deve lançar 400', async () => {
+      pointService.findOne.mockResolvedValue({ id: 'point-1', type: 'both' });
+
+      await expect(service.createFromCamera(dto, companyActor)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('ponto "both" com type no payload deve usar o type informado', async () => {
+      pointService.findOne.mockResolvedValue({ id: 'point-1', type: 'both' });
+
+      await service.createFromCamera(
+        { ...(dto as object), type: 'exit' } as never,
+        companyActor,
+      );
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'exit' }),
       );
     });
 

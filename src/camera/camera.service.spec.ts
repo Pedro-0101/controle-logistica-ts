@@ -75,6 +75,17 @@ describe('CameraService', () => {
         }),
       );
     });
+
+    it('deve repassar o pointId da câmera para o repositório', () => {
+      service.create(
+        { name: 'Portaria 1', pointId: 'point-1' } as never,
+        companyActor,
+      );
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ pointId: 'point-1' }),
+      );
+    });
   });
 
   describe('findAll', () => {

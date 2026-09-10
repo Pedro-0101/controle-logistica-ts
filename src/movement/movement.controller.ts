@@ -6,6 +6,7 @@ import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { MovementResponseDto } from './dto/movement-response.schema.js';
+import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -36,11 +37,14 @@ export class MovementController {
   @ApiOperation({
     summary: 'Criar movimento a partir da câmera (ANPR)',
     description:
-      'Captura o snapshot da câmera, reconhece a placa do veículo e registra a entrada ou saída.',
+      'Captura o snapshot da câmera, reconhece a placa do veículo e registra a entrada ou saída.\n\n' +
+      'O front envia apenas o `cameraId` (e dados operacionais opcionais) — nada sobre o veículo. ' +
+      'O backend resolve o tipo do movimento (entrada/saída) a partir do ponto vinculado à câmera, ' +
+      'busca/cria o veículo pela placa reconhecida e retorna o movimento com os dados do veículo.',
   })
-  @ZodResponse({ status: 201, type: MovementResponseDto })
+  @ZodResponse({ status: 201, type: MovementFromCameraResponseDto })
   @ApiResponse({ status: 400, description: 'Dados de entrada inválidos' })
-  @ApiResponse({ status: 404, description: 'Câmera não encontrada' })
+  @ApiResponse({ status: 404, description: 'Câmera ou ponto não encontrado' })
   @ApiResponse({ status: 422, description: 'Placa não reconhecida na imagem' })
   @ApiResponse({ status: 502, description: 'Falha ao capturar imagem da câmera' })
   createFromCamera(

@@ -26,6 +26,13 @@ export class Camera {
   adminUnityId: string;
 
   @ApiProperty({
+    description: 'ID do ponto (entrada/saída) vinculado à câmera',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  })
+  @Column()
+  pointId: string;
+
+  @ApiProperty({
     description: 'Nome da câmera',
     example: 'Câmera Portaria 1',
   })

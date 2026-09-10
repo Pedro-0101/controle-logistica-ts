@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
@@ -15,6 +15,7 @@ import {
 import { CameraService } from '../camera/camera.service.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
+import { PointService } from '../point/point.service.js';
 
 @Injectable()
 export class MovementService {
@@ -24,6 +25,7 @@ export class MovementService {
     private readonly cameraService: CameraService,
     private readonly anprService: AnprService,
     private readonly vehicleService: VehicleService,
+    private readonly pointService: PointService,
   ) {}
 
   create(createMovementDto: CreateMovementDto, actor: Actor) {
@@ -44,22 +46,32 @@ export class MovementService {
       createMovementFromCameraDto.cameraId,
       actor,
     );
+    const point = await this.pointService.findOne(camera.pointId, actor);
+
+    const type = this.resolveMovementType(point.type, createMovementFromCameraDto.type);
+
     const reconhecida = await this.anprService.reconhecerCamera(camera);
 
     const scope = resolveCompanyScope(actor);
     const companyId =
       scope.mode === 'company' ? scope.companyId : createMovementFromCameraDto.companyId;
+    if (!companyId) {
+      throw new BadRequestException(
+        'Company ID é obrigatório para usuários sem empresa vinculada',
+      );
+    }
+
     const vehicle = await this.vehicleService.findOrCreateByPlate(
       reconhecida.placa,
       companyId,
       actor,
     );
 
-    return this.create(
+    const movement = await this.create(
       {
-        pointId: createMovementFromCameraDto.pointId,
+        pointId: camera.pointId,
         vehicleId: vehicle.id,
-        type: createMovementFromCameraDto.type,
+        type,
         dateTime: createMovementFromCameraDto.dateTime ?? new Date().toISOString(),
         status: 'open',
         companyId,
@@ -68,6 +80,23 @@ export class MovementService {
         notes: createMovementFromCameraDto.notes,
       } as CreateMovementDto,
       actor,
+    );
+
+    return { movement, vehicle };
+  }
+
+  private resolveMovementType(
+    pointType: string,
+    type?: 'entry' | 'exit',
+  ): 'entry' | 'exit' {
+    if (pointType === 'entry' || pointType === 'exit') {
+      return pointType;
+    }
+    if (type) {
+      return type;
+    }
+    throw new BadRequestException(
+      'O ponto vinculado à câmera aceita entrada e saída; informe o tipo (entry/exit) no payload',
     );
   }
 

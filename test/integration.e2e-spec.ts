@@ -121,11 +121,24 @@ describe('Integração (e2e)', () => {
   });
 
   it('administrador da empresa deve cadastrar uma câmera', async () => {
+    const pointRes = await request(app.getHttpServer())
+      .post('/point')
+      .set('Authorization', `Bearer ${companyToken}`)
+      .send({
+        name: 'Portão 1',
+        code: 'P-001',
+        type: 'entry',
+        adminUnityId: 'unidade-e2e',
+        companyId,
+      })
+      .expect(201);
+
     const res = await request(app.getHttpServer())
       .post('/camera')
       .set('Authorization', `Bearer ${companyToken}`)
       .send({
         adminUnityId: 'unidade-e2e',
+        pointId: pointRes.body.id,
         name: 'Câmera Portaria',
         ip: '192.168.11.241',
         port: 80,
