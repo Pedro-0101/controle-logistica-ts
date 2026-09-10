@@ -9,6 +9,11 @@ async function bootstrap() {
     instrument: ObserveInstrument,
   });
 
+  app.enableCors({
+    origin: true,
+    credentials: false,
+  });
+
   const config = new DocumentBuilder()
     .setTitle('Controle Logística API')
     .setDescription('API para gestão de usuários, empresas, unidades administrativas e movimentação de veículos')
