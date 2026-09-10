@@ -1,5 +1,8 @@
 """Rotas de reconhecimento de placa (câmera IP ou imagem enviada)."""
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import APIRouter, HTTPException
 
 from ..anpr.recognizer import get_recognizer
@@ -19,6 +22,8 @@ from ..services.erros import (
 from ..services.imagem import decodificar, decodificar_base64, salvar
 
 router = APIRouter(tags=["anpr"])
+
+_ocr_pool = ThreadPoolExecutor(max_workers=1)
 
 
 @router.get("/health", response_model=HealthOut, summary="Healthcheck")
@@ -60,7 +65,8 @@ async def reconhecer_camera(body: ReconhecerCameraIn) -> ReconhecerCameraOut:
             status_code=502, detail="Imagem inválida retornada pela câmera"
         ) from exc
 
-    melhor = _reconhecer_ou_422(imagem)
+    loop = asyncio.get_running_loop()
+    melhor = await loop.run_in_executor(_ocr_pool, _reconhecer_ou_422, imagem)
     foto_path = salvar(conteudo)
 
     return ReconhecerCameraOut(
@@ -90,7 +96,8 @@ async def reconhecer_imagem(body: ReconhecerImagemIn) -> PlacaOut:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    melhor = _reconhecer_ou_422(imagem)
+    loop = asyncio.get_running_loop()
+    melhor = await loop.run_in_executor(_ocr_pool, _reconhecer_ou_422, imagem)
 
     return PlacaOut(
         placa=melhor.placa.valor,
