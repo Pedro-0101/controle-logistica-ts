@@ -20,10 +20,6 @@ export const createPointSchema = z
       description: 'ID da unidade administrativa vinculada ao ponto',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
     }),
-    companyId: z.string().min(1, 'Company ID is required').meta({
-      description: 'ID da empresa vinculada ao ponto',
-      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-    }),
     active: z.boolean().default(true).meta({
       description: 'Indica se o ponto está ativo',
       examples: [true],

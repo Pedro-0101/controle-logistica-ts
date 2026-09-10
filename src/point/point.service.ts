@@ -7,7 +7,7 @@ import { Point } from './entities/point.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -20,10 +20,10 @@ export class PointService {
   ) {}
 
   create(createPointDto: CreatePointDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createPointDto, scope);
+    const companyId = requireCompanyId(actor);
     const point = this.pointRepository.create({
-      ...data,
+      ...createPointDto,
+      companyId,
       createdById: actor.userId,
     });
     return this.pointRepository.save(point);
@@ -48,10 +48,8 @@ export class PointService {
   }
 
   async update(id: string, updatePointDto: UpdatePointDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
     const point = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updatePointDto }, scope);
-    Object.assign(point, data, { updatedById: actor.userId });
+    Object.assign(point, updatePointDto, { updatedById: actor.userId });
     return this.pointRepository.save(point);
   }
 

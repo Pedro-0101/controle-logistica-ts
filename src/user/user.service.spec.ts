@@ -94,7 +94,6 @@ describe('UserService', () => {
           name: 'João',
           email: 'joao@empresa.com',
           password: 'senha123',
-          companyId: 'outra-empresa',
         },
         companyActor,
       );
@@ -103,18 +102,17 @@ describe('UserService', () => {
       );
     });
 
-    it('root pode definir companyId livremente', async () => {
+    it('root cria usuário sem empresa vinculada (companyId null)', async () => {
       await service.create(
         {
           name: 'João',
           email: 'joao@empresa.com',
           password: 'senha123',
-          companyId: 'empresa-x',
         },
         rootActor,
       );
       expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ companyId: 'empresa-x' }),
+        expect.objectContaining({ companyId: null }),
       );
     });
 
@@ -127,9 +125,8 @@ describe('UserService', () => {
             email: 'joao@empresa.com',
             password: 'senha123',
             role: 'admin',
-            companyId: 'empresa-x',
           },
-          rootActor,
+          companyActor,
         ),
       ).rejects.toThrow(ConflictException);
     });
@@ -156,11 +153,7 @@ describe('UserService', () => {
         })
         .mockResolvedValueOnce({ id: 'admin-1' });
       await expect(
-        service.update(
-          '1',
-          { role: 'admin', companyId: 'empresa-x' },
-          rootActor,
-        ),
+        service.update('1', { role: 'admin' }, rootActor),
       ).rejects.toThrow(ConflictException);
     });
 

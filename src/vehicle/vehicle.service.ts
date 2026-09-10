@@ -7,7 +7,7 @@ import { Vehicle } from './entities/vehicle.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -20,10 +20,10 @@ export class VehicleService {
   ) {}
 
   create(createVehicleDto: CreateVehicleDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createVehicleDto, scope);
+    const companyId = requireCompanyId(actor);
     const vehicle = this.vehicleRepository.create({
-      ...data,
+      ...createVehicleDto,
+      companyId,
       createdById: actor.userId,
     });
     return this.vehicleRepository.save(vehicle);
@@ -64,10 +64,8 @@ export class VehicleService {
   }
 
   async update(id: string, updateVehicleDto: UpdateVehicleDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
     const vehicle = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updateVehicleDto }, scope);
-    Object.assign(vehicle, data, { updatedById: actor.userId });
+    Object.assign(vehicle, updateVehicleDto, { updatedById: actor.userId });
     return this.vehicleRepository.save(vehicle);
   }
 

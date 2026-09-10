@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { VehicleService } from './vehicle.service.js';
 import { Vehicle } from './entities/vehicle.entity.js';
 import type { Actor } from '../auth/company-scope.js';
@@ -62,18 +62,10 @@ describe('VehicleService', () => {
       );
     });
 
-    it('root pode definir companyId livremente', () => {
-      service.create(
-        { plate: 'ABC1234', companyId: 'empresa-x' } as never,
-        rootActor,
-      );
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: 'empresa-x',
-          createdById: 'root-id',
-        }),
-      );
+    it('root sem empresa deve ser bloqueado ao criar veículo', () => {
+      expect(() =>
+        service.create({ plate: 'ABC1234' } as never, rootActor),
+      ).toThrow(ForbiddenException);
     });
   });
 

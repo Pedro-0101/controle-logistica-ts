@@ -8,7 +8,7 @@ import { Movement } from './entities/movement.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -29,10 +29,10 @@ export class MovementService {
   ) {}
 
   create(createMovementDto: CreateMovementDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createMovementDto, scope);
+    const companyId = requireCompanyId(actor);
     const movement = this.movementRepository.create({
-      ...data,
+      ...createMovementDto,
+      companyId,
       createdById: actor.userId,
     });
     return this.movementRepository.save(movement);
@@ -52,14 +52,7 @@ export class MovementService {
 
     const reconhecida = await this.anprService.reconhecerCamera(camera);
 
-    const scope = resolveCompanyScope(actor);
-    const companyId =
-      scope.mode === 'company' ? scope.companyId : createMovementFromCameraDto.companyId;
-    if (!companyId) {
-      throw new BadRequestException(
-        'Company ID é obrigatório para usuários sem empresa vinculada',
-      );
-    }
+    const companyId = requireCompanyId(actor);
 
     const vehicle = await this.vehicleService.findOrCreateByPlate(
       reconhecida.placa,
@@ -74,7 +67,6 @@ export class MovementService {
         type,
         dateTime: createMovementFromCameraDto.dateTime ?? new Date().toISOString(),
         status: 'open',
-        companyId,
         purpose: createMovementFromCameraDto.purpose,
         driverName: createMovementFromCameraDto.driverName,
         notes: createMovementFromCameraDto.notes,
@@ -119,10 +111,8 @@ export class MovementService {
   }
 
   async update(id: string, updateMovementDto: UpdateMovementDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
     const movement = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updateMovementDto }, scope);
-    Object.assign(movement, data, { updatedById: actor.userId });
+    Object.assign(movement, updateMovementDto, { updatedById: actor.userId });
     return this.movementRepository.save(movement);
   }
 

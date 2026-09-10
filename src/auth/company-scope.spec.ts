@@ -1,6 +1,7 @@
+import { ForbiddenException } from '@nestjs/common';
 import {
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
   type Actor,
@@ -56,19 +57,13 @@ describe('companyScopeFilter', () => {
   });
 });
 
-describe('forceCompanyId', () => {
-  it('escopo "all" mantém os dados originais', () => {
-    const scope: CompanyScope = { mode: 'all', companyId: null };
-    const data = { name: 'X', companyId: 'outra' };
-    expect(forceCompanyId(data, scope)).toBe(data);
+describe('requireCompanyId', () => {
+  it('ator com empresa retorna o companyId do token', () => {
+    expect(requireCompanyId(companyActor)).toBe('company-1');
   });
 
-  it('escopo "company" força o companyId do ator', () => {
-    const scope: CompanyScope = { mode: 'company', companyId: 'company-1' };
-    const data = { name: 'X', companyId: 'outra-empresa' };
-    const result = forceCompanyId(data, scope);
-    expect(result).toEqual({ name: 'X', companyId: 'company-1' });
-    expect(result).not.toBe(data);
+  it('ator sem empresa lança ForbiddenException', () => {
+    expect(() => requireCompanyId(rootActor)).toThrow(ForbiddenException);
   });
 });
 

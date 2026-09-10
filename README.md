@@ -94,6 +94,10 @@ O escopo dos dados é por empresa (`companyId` do token): usuários com `company
 definido só enxergam/alteram registros da própria empresa; o `admin` (sem empresa)
 enxerga tudo.
 
+> **`companyId` é sempre extraído do token JWT**, nunca do corpo da requisição.
+> Entidades operacionais (ponto, câmera, veículo, movimento, unidade administrativa)
+> exigem que o usuário autenticado tenha empresa vinculada — caso contrário, retorna 403.
+
 ## Fluxo de reconhecimento de placa (ANPR)
 
 O front não acessa a câmera nem roda OCR — isso fica no microserviço Python. O fluxo:
@@ -107,10 +111,11 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
      "ip": "192.168.11.241",
      "port": 80, "username": "admin", "password": "...",
      "authType": "digest",           // "digest" ou "basic"
-     "snapshotUrl": null,            // opcional: se omitido, o ANPR tenta auto-descobrir
-     "companyId": "..."
+     "snapshotUrl": null             // opcional: se omitido, o ANPR tenta auto-descobrir
    }
    ```
+
+   > O `companyId` é derivado automaticamente do token JWT (não envie no body).
 
    > O `pointId` identifica o ponto (portão) e seu `type` (`entry` | `exit` | `both`)
    > define o tipo da movimentação. Cadastre o ponto antes via `POST /point`.
@@ -123,7 +128,6 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
    {
      "cameraId": "...",              // câmera cadastrada no passo 1
      "type": "entry",                // opcional; OBRIGATÓRIO se o ponto for "both"
-     "companyId": "...",             // opcional; OBRIGATÓRIO para admin (sem empresa no token)
      "dateTime": "2026-08-29T12:00:00.000Z",  // opcional (default: agora)
      "purpose": "Entrega de mercadoria",       // opcional
      "driverName": "João Silva",               // opcional
@@ -132,6 +136,8 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
    → 201 { "movement": { id, pointId, vehicleId, type, dateTime, status, ... },
            "vehicle":  { id, plate, code, type, ... } }
    ```
+
+   > O `companyId` é derivado automaticamente do token JWT (não envie no body).
 
    Internamente o backend: captura o snapshot da câmera → chama o ANPR → normaliza a
    placa → **cria o veículo se não existir** (com `code` = placa e `type` = `visitor`)
@@ -173,6 +179,7 @@ possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
 |---|---|
 | `400` | Dados de entrada inválidos |
 | `401` | Não autenticado / credenciais inválidas |
+| `403` | Acesso negado (ex.: tentar criar entidade sem empresa vinculada) |
 | `404` | Registro não encontrado |
 | `422` | Placa não reconhecida na imagem |
 | `502` | Falha na câmera ou microserviço ANPR indisponível |

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AdminUnityService } from './admin-unity.service.js';
 import { AdminUnity } from './entities/admin-unity.entity.js';
 import type { Actor } from '../auth/company-scope.js';
@@ -61,15 +61,10 @@ describe('AdminUnityService', () => {
       );
     });
 
-    it('root pode definir companyId livremente', () => {
-      service.create(
-        { name: 'Unidade 1', companyId: 'empresa-x' } as never,
-        rootActor,
-      );
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ companyId: 'empresa-x' }),
-      );
+    it('root sem empresa deve ser bloqueado ao criar unidade', () => {
+      expect(() =>
+        service.create({ name: 'Unidade 1' } as never, rootActor),
+      ).toThrow(ForbiddenException);
     });
   });
 

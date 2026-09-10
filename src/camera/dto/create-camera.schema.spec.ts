@@ -6,7 +6,6 @@ describe('createCameraSchema', () => {
     pointId: 'point-1',
     name: 'Portaria 1',
     ip: '192.168.11.241',
-    companyId: 'company-1',
   };
 
   it('deve aceitar um payload válido com pointId', () => {

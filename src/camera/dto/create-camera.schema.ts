@@ -45,10 +45,6 @@ export const createCameraSchema = z
       description: 'Descrição opcional da câmera',
       examples: ['Entrada principal'],
     }),
-    companyId: z.string().min(1, 'Company ID is required').meta({
-      description: 'ID da empresa vinculada à câmera',
-      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-    }),
   })
   .meta({ id: 'CreateCameraDto' });
 

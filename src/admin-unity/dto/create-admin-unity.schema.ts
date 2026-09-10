@@ -23,10 +23,6 @@ export const createAdminUnitySchema = z.object({
     examples: ['unidade.centro@email.com'],
     format: 'email',
   }),
-  companyId: z.string().min(1, 'Company ID is required').meta({
-    description: 'ID da empresa vinculada à unidade',
-    examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-  }),
   active: z.boolean().default(true).meta({
     description: 'Indica se a unidade está ativa',
     examples: [true],

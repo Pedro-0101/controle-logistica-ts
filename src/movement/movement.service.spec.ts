@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { MovementService } from './movement.service.js';
 import { Movement } from './entities/movement.entity.js';
 import { CameraService } from '../camera/camera.service.js';
@@ -79,7 +83,6 @@ describe('MovementService', () => {
   describe('createFromCamera', () => {
     const dto = {
       cameraId: 'camera-1',
-      companyId: 'company-x',
       dateTime: '2026-08-29T12:00:00.000Z',
       purpose: 'Entrega',
       driverName: 'João',
@@ -129,29 +132,10 @@ describe('MovementService', () => {
       );
     });
 
-    it('root deve usar o companyId informado no DTO', async () => {
-      await service.createFromCamera(dto, rootActor);
-
-      expect(vehicleService.findOrCreateByPlate).toHaveBeenCalledWith(
-        'ABC1D23',
-        'company-x',
-        rootActor,
+    it('root sem empresa deve ser bloqueado', async () => {
+      await expect(service.createFromCamera(dto, rootActor)).rejects.toThrow(
+        ForbiddenException,
       );
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: 'company-x',
-          createdById: 'root-id',
-        }),
-      );
-    });
-
-    it('root sem companyId no payload deve lançar 400', async () => {
-      await expect(
-        service.createFromCamera(
-          { ...(dto as object), companyId: undefined } as never,
-          rootActor,
-        ),
-      ).rejects.toThrow(BadRequestException);
     });
 
     it('ponto "both" sem type no payload deve lançar 400', async () => {

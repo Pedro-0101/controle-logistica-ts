@@ -7,7 +7,7 @@ import { Camera } from './entities/camera.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -20,10 +20,10 @@ export class CameraService {
   ) {}
 
   create(createCameraDto: CreateCameraDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createCameraDto, scope);
+    const companyId = requireCompanyId(actor);
     const camera = this.cameraRepository.create({
-      ...data,
+      ...createCameraDto,
+      companyId,
       createdById: actor.userId,
     });
     return this.cameraRepository.save(camera);
@@ -48,10 +48,8 @@ export class CameraService {
   }
 
   async update(id: string, updateCameraDto: UpdateCameraDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
     const camera = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updateCameraDto }, scope);
-    Object.assign(camera, data, { updatedById: actor.userId });
+    Object.assign(camera, updateCameraDto, { updatedById: actor.userId });
     return this.cameraRepository.save(camera);
   }
 

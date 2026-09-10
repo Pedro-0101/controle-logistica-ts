@@ -13,7 +13,6 @@ import { User } from './entities/user.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -29,16 +28,16 @@ export class UserService {
 
   async create(createUserDto: CreateUserDto, actor: Actor) {
     const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createUserDto, scope);
+    const companyId = scope.mode === 'company' ? scope.companyId : null;
 
-    if (data.role === 'admin' && data.companyId) {
-      await this.assertSingleCompanyAdmin(data.companyId);
+    if (createUserDto.role === 'admin' && companyId) {
+      await this.assertSingleCompanyAdmin(companyId);
     }
 
-    const hashedPassword = await this.hashPassword(data.password);
+    const hashedPassword = await this.hashPassword(createUserDto.password);
     const user = this.userRepository.create({
-      ...data,
-      companyId: data.companyId ?? null,
+      ...createUserDto,
+      companyId,
       password: hashedPassword,
     });
     return this.userRepository.save(user);
@@ -71,9 +70,8 @@ export class UserService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
     const user = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updateUserDto }, scope);
+    const data = { ...updateUserDto };
 
     if (user.role === 'admin' && data.role && data.role !== 'admin') {
       throw new ForbiddenException(
@@ -81,7 +79,7 @@ export class UserService {
       );
     }
 
-    const targetCompanyId = data.companyId ?? user.companyId;
+    const targetCompanyId = user.companyId;
     const targetRole = data.role ?? user.role;
     if (targetRole === 'admin' && targetCompanyId) {
       const existingAdmin = await this.userRepository.findOneBy({

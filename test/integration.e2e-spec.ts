@@ -129,7 +129,6 @@ describe('Integração (e2e)', () => {
         code: 'P-001',
         type: 'entry',
         adminUnityId: 'unidade-e2e',
-        companyId,
       })
       .expect(201);
 
@@ -145,7 +144,6 @@ describe('Integração (e2e)', () => {
         username: 'admin',
         password: 'senha',
         authType: 'digest',
-        companyId,
       })
       .expect(201);
 

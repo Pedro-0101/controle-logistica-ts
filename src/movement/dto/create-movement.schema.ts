@@ -23,10 +23,6 @@ export const createMovementSchema = z.object({
     examples: ['open'],
     default: 'open',
   }),
-  companyId: z.string().min(1, 'Company ID is required').meta({
-    description: 'ID da empresa vinculada ao movimento',
-    examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-  }),
   purpose: z.string().optional().meta({
     description: 'Motivo do movimento',
     examples: ['Entrega de mercadoria'],

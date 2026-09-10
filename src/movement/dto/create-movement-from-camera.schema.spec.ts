@@ -13,16 +13,15 @@ describe('createMovementFromCameraSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('type e companyId devem ser opcionais', () => {
+  it('type deve ser opcional e companyId não deve existir no payload', () => {
     const result = createMovementFromCameraSchema.safeParse({
       cameraId: 'camera-1',
       type: 'exit',
-      companyId: 'company-1',
     });
 
     expect(result.success).toBe(true);
     expect(result.data?.type).toBe('exit');
-    expect(result.data?.companyId).toBe('company-1');
+    expect(result.data).not.toHaveProperty('companyId');
   });
 
   it('não deve aceitar pointId nem vehicleId no payload', () => {

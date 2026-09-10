@@ -7,7 +7,7 @@ import { AdminUnity } from './entities/admin-unity.entity.js';
 import {
   type Actor,
   companyScopeFilter,
-  forceCompanyId,
+  requireCompanyId,
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
@@ -20,9 +20,11 @@ export class AdminUnityService {
   ) {}
 
   create(createAdminUnityDto: CreateAdminUnityDto, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const data = forceCompanyId(createAdminUnityDto, scope);
-    const adminUnity = this.adminUnityRepository.create(data);
+    const companyId = requireCompanyId(actor);
+    const adminUnity = this.adminUnityRepository.create({
+      ...createAdminUnityDto,
+      companyId,
+    });
     return this.adminUnityRepository.save(adminUnity);
   }
 
@@ -49,10 +51,8 @@ export class AdminUnityService {
     updateAdminUnityDto: UpdateAdminUnityDto,
     actor: Actor,
   ) {
-    const scope = resolveCompanyScope(actor);
     const adminUnity = await this.findOne(id, actor);
-    const data = forceCompanyId({ ...updateAdminUnityDto }, scope);
-    Object.assign(adminUnity, data);
+    Object.assign(adminUnity, updateAdminUnityDto);
     return this.adminUnityRepository.save(adminUnity);
   }
 

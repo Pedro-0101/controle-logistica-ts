@@ -12,11 +12,6 @@ export const createMovementFromCameraSchema = z
         'Tipo do movimento (entrada ou saída). Obrigatório apenas quando o ponto vinculado à câmera é do tipo "both".',
       examples: ['entry'],
     }),
-    companyId: z.string().min(1).optional().meta({
-      description:
-        'ID da empresa vinculada ao movimento. Obrigatório apenas para usuários admin sem empresa no token.',
-      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-    }),
     dateTime: z.iso.datetime().optional().meta({
       description: 'Data e hora em que o movimento ocorreu',
       examples: ['2026-08-29T12:00:00.000Z'],

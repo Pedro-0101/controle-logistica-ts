@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CameraService } from './camera.service.js';
 import { Camera } from './entities/camera.entity.js';
 import type { Actor } from '../auth/company-scope.js';
@@ -62,18 +62,10 @@ describe('CameraService', () => {
       );
     });
 
-    it('root pode definir companyId livremente', () => {
-      service.create(
-        { name: 'Portaria 1', companyId: 'empresa-x' } as never,
-        rootActor,
-      );
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: 'empresa-x',
-          createdById: 'root-id',
-        }),
-      );
+    it('root sem empresa deve ser bloqueado ao criar câmera', () => {
+      expect(() =>
+        service.create({ name: 'Portaria 1' } as never, rootActor),
+      ).toThrow(ForbiddenException);
     });
 
     it('deve repassar o pointId da câmera para o repositório', () => {

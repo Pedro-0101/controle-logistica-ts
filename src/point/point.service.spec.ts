@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PointService } from './point.service.js';
 import { Point } from './entities/point.entity.js';
 import type { Actor } from '../auth/company-scope.js';
@@ -62,17 +62,9 @@ describe('PointService', () => {
       );
     });
 
-    it('root pode definir companyId livremente', () => {
-      service.create(
-        { name: 'P1', companyId: 'empresa-x' } as never,
-        rootActor,
-      );
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: 'empresa-x',
-          createdById: 'root-id',
-        }),
+    it('root sem empresa deve ser bloqueado ao criar ponto', () => {
+      expect(() => service.create({ name: 'P1' } as never, rootActor)).toThrow(
+        ForbiddenException,
       );
     });
   });
