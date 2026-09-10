@@ -23,7 +23,7 @@ Frontend ──HTTP──> NestJS (esta API) ──HTTP──> Microserviço ANP
 ## Como subir
 
 ```bash
-# 1. Banco de dados
+# 1. Banco de dados + MediaMTX (transmissão das câmeras)
 docker compose up -d
 
 # 2. Microserviço ANPR (Python)
@@ -40,6 +40,22 @@ npm run seed:admin
 ```
 
 Documentação interativa (Swagger): http://localhost:3000/docs
+
+## Transmissão ao vivo das câmeras (MediaMTX)
+
+As câmeras IP (Hikvision) falam RTSP com autenticação **digest**, que o navegador
+não consome diretamente. O **MediaMTX** (`docker compose up -d mediamtx`) puxa o
+RTSP de cada câmera e reexpõe em **HLS** (e WebRTC) para o frontend. A fonte usada
+é o substream (canal 102, H.264 640x360), único compatível com navegadores sem
+transcodificar.
+
+| Recurso | URL |
+|---|---|
+| HLS câmera entrada | `http://localhost:8888/camera-entrada/index.m3u8` |
+| HLS câmera saída | `http://localhost:8888/camera-saida/index.m3u8` |
+
+A configuração dos streams fica em `mediamtx.yml` (fontes RTSP de cada câmera,
+com `sourceOnDemand` para só conectar quando houver espectador).
 
 ## Variáveis de ambiente (`.env`)
 

@@ -1,0 +1,36 @@
+# MediaMTX — media server para transmissão das câmeras IP ao navegador.
+#
+# As câmeras falam RTSP com autenticação digest, que o navegador não consome
+# diretamente. O MediaMTX puxa o RTSP (substream H.264) e reexpõe em WebRTC
+# (WHEP) e HLS para o frontend.
+#
+# Fonte usada: substream (canal 102, H.264 640x360), compatível com navegadores.
+# O canal 101 (principal) é H.265 e não toca em MSE/WebRTC sem transcodificar.
+
+rtsp: yes
+rtspAddress: :8554
+
+rtmp: no
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigins:
+  - '*'
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigins:
+  - '*'
+
+srt: no
+
+paths:
+  camera-entrada:
+    source: rtsp://admin:Cameraip1@192.168.11.241:554/Streaming/Channels/102
+    sourceOnDemand: yes
+    sourceFingerprint: allow
+
+  camera-saida:
+    source: rtsp://admin:Cameraip1@192.168.11.242:554/Streaming/Channels/102
+    sourceOnDemand: yes
+    sourceFingerprint: allow
