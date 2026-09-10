@@ -1,8 +1,11 @@
-"""Reconhecimento de placas via PaddleOCR (ANPR offline).
+"""Reconhecimento de placas via YOLO (detecção) + PaddleOCR (leitura).
 
-O import do PaddleOCR é feito sob demanda (dentro do construtor), pois é um
-carregamento pesado e deve ficar fora do caminho de requests que informam a
-placa explicitamente.
+Pipeline em dois estágios:
+1. YOLO detecta as regiões de placa na imagem (~50-200ms)
+2. PaddleOCR lê o texto de cada recorte (~0.3-1s por placa)
+
+Mais rápido e preciso que rodar PaddleOCR na imagem inteira.
+Faz fallback para PaddleOCR completo se YOLO não detectar nada.
 """
 
 import os
@@ -57,7 +60,48 @@ class PlacaRecognizer:
         )
 
     def reconhecer(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
-        """Retorna os candidatos a placa em uma imagem (BGR, OpenCV)."""
+        """Retorna os candidatos a placa em uma imagem (BGR, OpenCV).
+
+        Tenta YOLO+PaddleOCR primeiro. Se YOLO não detectar nada,
+        faz fallback para PaddleOCR na imagem inteira.
+        """
+        candidatos = self._reconhecer_yolo(imagem)
+        if candidatos:
+            return candidatos
+        return self._reconhecer_paddle_completo(imagem)
+
+    def _reconhecer_yolo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
+        """Etapa 1: YOLO detecta placa → PaddleOCR lê o recorte."""
+        from .detector import detectar_placas, recortar_placa
+
+        deteccoes = detectar_placas(imagem)
+        candidatos: list[CandidatoPlaca] = []
+
+        for det in deteccoes:
+            recorte = recortar_placa(imagem, det)
+            if recorte.size == 0:
+                continue
+
+            resultado = self._ocr.predict(recorte)
+            for pagina in resultado:
+                textos = pagina["rec_texts"]
+                scores = pagina["rec_scores"]
+                for texto, score in zip(textos, scores, strict=False):
+                    placa = normalizar_placa(texto)
+                    if placa is not None:
+                        candidatos.append(
+                            CandidatoPlaca(
+                                placa=placa,
+                                confianca=float(score) * det.confianca,
+                                raw=texto,
+                                box=(float(det.x1), float(det.y1), float(det.x2), float(det.y2)),
+                            )
+                        )
+
+        return candidatos
+
+    def _reconhecer_paddle_completo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
+        """Fallback: PaddleOCR na imagem inteira (sem YOLO)."""
         resultado = self._ocr.predict(imagem)
         candidatos: list[CandidatoPlaca] = []
         for pagina in resultado:
