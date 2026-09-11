@@ -5,11 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { CreateUserDto } from './dto/create-user.schema.js';
 import { UpdateUserDto } from './dto/update-user.schema.js';
+import { LinkPointsDto } from './dto/link-points.schema.js';
 import { User } from './entities/user.entity.js';
+import { Point } from '../point/entities/point.entity.js';
 import {
   type Actor,
   companyScopeFilter,
@@ -24,6 +26,8 @@ export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Point)
+    private readonly pointRepository: Repository<Point>,
   ) {}
 
   async create(createUserDto: CreateUserDto, actor: Actor) {
@@ -104,6 +108,61 @@ export class UserService {
       throw new ForbiddenException('Usuários administradores não podem ser removidos');
     }
     return this.userRepository.remove(user);
+  }
+
+  async linkPoints(userId: string, linkPointsDto: LinkPointsDto, actor: Actor) {
+    if (actor.role === 'user') {
+      throw new ForbiddenException('Usuários comuns não podem editar vinculações de pontos');
+    }
+
+    const user = await this.findOne(userId, actor);
+    if (user.role !== 'user') {
+      throw new ForbiddenException('Apenas usuários do tipo "user" podem ser vinculados a pontos');
+    }
+
+    const points = await this.pointRepository.findBy({ id: In(linkPointsDto.pointIds) });
+    if (points.length !== linkPointsDto.pointIds.length) {
+      throw new NotFoundException('Um ou mais pontos não foram encontrados');
+    }
+
+    const scope = resolveCompanyScope(actor);
+    if (scope.mode === 'company') {
+      const invalidPoints = points.filter((p: Point) => p.companyId !== scope.companyId);
+      if (invalidPoints.length > 0) {
+        throw new ForbiddenException('Um ou mais pontos não pertencem à sua empresa');
+      }
+    }
+
+    user.points = [...(user.points || []), ...points];
+    await this.userRepository.save(user);
+    return this.findOne(userId, actor);
+  }
+
+  async unlinkPoints(userId: string, linkPointsDto: LinkPointsDto, actor: Actor) {
+    if (actor.role === 'user') {
+      throw new ForbiddenException('Usuários comuns não podem editar vinculações de pontos');
+    }
+
+    const user = await this.findOne(userId, actor);
+    if (!user.points || user.points.length === 0) {
+      return user;
+    }
+
+    user.points = user.points.filter((p: Point) => !linkPointsDto.pointIds.includes(p.id));
+    await this.userRepository.save(user);
+    return this.findOne(userId, actor);
+  }
+
+  async getUserPoints(userId: string, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const user = await this.userRepository.findOne({
+      where: withCompanyScopeWhere<User>({ id: userId }, scope),
+      relations: { points: true },
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+    return user.points || [];
   }
 
   private async assertSingleCompanyAdmin(companyId: string) {

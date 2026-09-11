@@ -24,6 +24,13 @@ export const userResponseSchema = z
       description: 'ID da empresa vinculada ao usuário (opcional para administradores/suporte)',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
     }),
+    points: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      code: z.string(),
+    })).optional().meta({
+      description: 'Pontos vinculados ao usuário',
+    }),
     createdAt: z.iso.datetime().meta({
       description: 'Data e hora da criação do registro',
       examples: ['2026-08-29T12:00:00.000Z'],

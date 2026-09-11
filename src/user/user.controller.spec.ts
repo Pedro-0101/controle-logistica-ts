@@ -18,6 +18,9 @@ describe('UserController', () => {
     findOne: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    linkPoints: vi.fn(),
+    unlinkPoints: vi.fn(),
+    getUserPoints: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -70,5 +73,35 @@ describe('UserController', () => {
 
     expect(controller.remove('1', user)).toEqual({ id: '1' });
     expect(service.remove).toHaveBeenCalledWith('1', user);
+  });
+
+  it('linkPoints delega ao service com id, dto e usuário', () => {
+    const dto = { pointIds: ['p1', 'p2'] };
+    service.linkPoints.mockReturnValue({ id: '1', points: [{ id: 'p1' }, { id: 'p2' }] });
+
+    expect(controller.linkPoints('1', dto as never, user)).toEqual({
+      id: '1',
+      points: [{ id: 'p1' }, { id: 'p2' }],
+    });
+    expect(service.linkPoints).toHaveBeenCalledWith('1', dto, user);
+  });
+
+  it('unlinkPoints delega ao service com id, dto e usuário', () => {
+    const dto = { pointIds: ['p1'] };
+    service.unlinkPoints.mockReturnValue({ id: '1', points: [{ id: 'p2' }] });
+
+    expect(controller.unlinkPoints('1', dto as never, user)).toEqual({
+      id: '1',
+      points: [{ id: 'p2' }],
+    });
+    expect(service.unlinkPoints).toHaveBeenCalledWith('1', dto, user);
+  });
+
+  it('getUserPoints delega ao service com id e usuário', () => {
+    const points = [{ id: 'p1', name: 'Portão 1', code: 'P-001' }];
+    service.getUserPoints.mockReturnValue(points);
+
+    expect(controller.getUserPoints('1', user)).toEqual(points);
+    expect(service.getUserPoints).toHaveBeenCalledWith('1', user);
   });
 });

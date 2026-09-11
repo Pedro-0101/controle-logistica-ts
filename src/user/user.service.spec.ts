@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { UserService } from './user.service.js';
 import { User } from './entities/user.entity.js';
+import { Point } from '../point/entities/point.entity.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const rootActor: Actor = {
@@ -29,8 +30,12 @@ describe('UserService', () => {
     create: vi.fn((data: Partial<User>) => data),
     save: vi.fn((data: Partial<User>) => data),
     find: vi.fn(),
+    findOne: vi.fn(),
     findOneBy: vi.fn(),
     remove: vi.fn((data: Partial<User>) => data),
+  };
+  const pointRepository = {
+    findBy: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -42,6 +47,10 @@ describe('UserService', () => {
         {
           provide: getRepositoryToken(User),
           useValue: repository,
+        },
+        {
+          provide: getRepositoryToken(Point),
+          useValue: pointRepository,
         },
       ],
     }).compile();
@@ -94,6 +103,7 @@ describe('UserService', () => {
           name: 'João',
           email: 'joao@empresa.com',
           password: 'senha123',
+          role: 'user',
         },
         companyActor,
       );
@@ -108,6 +118,7 @@ describe('UserService', () => {
           name: 'João',
           email: 'joao@empresa.com',
           password: 'senha123',
+          role: 'user',
         },
         rootActor,
       );
@@ -220,6 +231,170 @@ describe('UserService', () => {
       expect(repository.remove).toHaveBeenCalledWith(
         expect.objectContaining({ id: '1', role: 'user' }),
       );
+    });
+  });
+
+  describe('linkPoints', () => {
+    it('usuário comum não pode vincular pontos', async () => {
+      const userActor: Actor = {
+        userId: 'user-id',
+        email: 'user@empresa.com',
+        role: 'user',
+        companyId: 'company-1',
+      };
+      await expect(
+        service.linkPoints('1', { pointIds: ['p1'] }, userActor),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('não permite vincular pontos a usuário que não é do tipo "user"', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'admin',
+        companyId: 'company-1',
+        points: [],
+      });
+      await expect(
+        service.linkPoints('1', { pointIds: ['p1'] }, companyActor),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve vincular pontos ao usuário', async () => {
+      const userWithPoints = {
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+        points: [],
+      };
+      repository.findOneBy.mockResolvedValue(userWithPoints);
+      repository.save.mockResolvedValue(userWithPoints);
+      pointRepository.findBy.mockResolvedValue([
+        { id: 'p1', companyId: 'company-1' },
+      ]);
+
+      await service.linkPoints('1', { pointIds: ['p1'] }, companyActor);
+
+      expect(repository.save).toHaveBeenCalled();
+      expect(pointRepository.findBy).toHaveBeenCalled();
+    });
+
+    it('deve lançar 404 quando ponto não existe', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+        points: [],
+      });
+      pointRepository.findBy.mockResolvedValue([]);
+
+      await expect(
+        service.linkPoints('1', { pointIds: ['p1'] }, companyActor),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('não permite vincular pontos de outra empresa', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+        points: [],
+      });
+      pointRepository.findBy.mockResolvedValue([
+        { id: 'p1', companyId: 'company-2' },
+      ]);
+
+      await expect(
+        service.linkPoints('1', { pointIds: ['p1'] }, companyActor),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('unlinkPoints', () => {
+    it('usuário comum não pode desvincular pontos', async () => {
+      const userActor: Actor = {
+        userId: 'user-id',
+        email: 'user@empresa.com',
+        role: 'user',
+        companyId: 'company-1',
+      };
+      await expect(
+        service.unlinkPoints('1', { pointIds: ['p1'] }, userActor),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve desvincular pontos do usuário', async () => {
+      const userWithPoints = {
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+        points: [{ id: 'p1' }, { id: 'p2' }],
+      };
+      repository.findOneBy.mockResolvedValue(userWithPoints);
+      repository.save.mockResolvedValue(userWithPoints);
+
+      await service.unlinkPoints('1', { pointIds: ['p1'] }, companyActor);
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          points: [{ id: 'p2' }],
+        }),
+      );
+    });
+
+    it('deve retornar usuário quando não tem pontos vinculados', async () => {
+      const userWithoutPoints = {
+        id: '1',
+        role: 'user',
+        companyId: 'company-1',
+        points: [],
+      };
+      repository.findOneBy.mockResolvedValue(userWithoutPoints);
+
+      const result = await service.unlinkPoints(
+        '1',
+        { pointIds: ['p1'] },
+        companyActor,
+      );
+
+      expect(repository.save).not.toHaveBeenCalled();
+      expect(result).toEqual(userWithoutPoints);
+    });
+  });
+
+  describe('getUserPoints', () => {
+    it('deve retornar os pontos vinculados ao usuário', async () => {
+      const points = [{ id: 'p1', name: 'Portão 1', code: 'P-001' }];
+      repository.findOne.mockResolvedValue({
+        id: '1',
+        points,
+      });
+
+      const result = await service.getUserPoints('1', companyActor);
+
+      expect(result).toEqual(points);
+      expect(repository.findOne).toHaveBeenCalledWith({
+        where: { id: '1', companyId: 'company-1' },
+        relations: { points: true },
+      });
+    });
+
+    it('deve lançar 404 quando usuário não existe', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getUserPoints('1', companyActor),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve retornar array vazio quando usuário não tem pontos', async () => {
+      repository.findOne.mockResolvedValue({
+        id: '1',
+        points: null,
+      });
+
+      const result = await service.getUserPoints('1', companyActor);
+
+      expect(result).toEqual([]);
     });
   });
 });

@@ -5,8 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToMany,
+  JoinTable,
 } from 'typeorm';
 import { ApiProperty, ApiHideProperty } from '@nestjs/swagger';
+import { Point } from '../../point/entities/point.entity.js';
 
 const enumUsers = [
   'user',
@@ -77,4 +80,16 @@ export class User {
   })
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @ApiProperty({
+    description: 'Pontos vinculados ao usuário',
+    type: () => [Point],
+  })
+  @ManyToMany(() => Point)
+  @JoinTable({
+    name: 'user_points',
+    joinColumn: { name: 'userId', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'pointId', referencedColumnName: 'id' },
+  })
+  points: Point[];
 }

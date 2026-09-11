@@ -163,4 +163,125 @@ describe('Integração (e2e)', () => {
   it('rota protegida sem token deve retornar 401', async () => {
     await request(app.getHttpServer()).get('/camera').expect(401);
   });
+
+  describe('Vinculação de Usuários a Pontos', () => {
+    let userId: string;
+    let pointId: string;
+
+    it('administrador deve criar um usuário do tipo "user"', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/user')
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          name: 'Funcionário Teste',
+          email: 'funcionario@test.com',
+          password: 'senha123',
+          role: 'user',
+        })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('id');
+      expect(res.body.role).toBe('user');
+      userId = res.body.id;
+    });
+
+    it('administrador deve criar um ponto', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/point')
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          name: 'Portão Teste',
+          code: 'P-TEST',
+          type: 'both',
+          adminUnityId: 'unidade-e2e',
+        })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('id');
+      pointId = res.body.id;
+    });
+
+    it('administrador deve vincular ponto ao usuário', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/user/${userId}/points`)
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          pointIds: [pointId],
+        })
+        .expect(200);
+
+      expect(res.body.points).toBeDefined();
+      expect(res.body.points.length).toBe(1);
+      expect(res.body.points[0].id).toBe(pointId);
+    });
+
+    it('administrador deve listar pontos vinculados ao usuário', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/user/${userId}/points`)
+        .set('Authorization', `Bearer ${companyToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(pointId);
+    });
+
+    it('administrador deve desvincular ponto do usuário', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/user/${userId}/points`)
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          pointIds: [pointId],
+        })
+        .expect(200);
+
+      expect(res.body.points).toBeDefined();
+      expect(res.body.points.length).toBe(0);
+    });
+
+    it('usuário comum não deve poder vincular pontos', async () => {
+      const userRes = await request(app.getHttpServer())
+        .post('/user')
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          name: 'Outro Funcionário',
+          email: 'outro@test.com',
+          password: 'senha123',
+          role: 'user',
+        })
+        .expect(201);
+
+      const userTokenRes = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: 'outro@test.com', password: 'senha123' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`/user/${userRes.body.id}/points`)
+        .set('Authorization', `Bearer ${userTokenRes.body.access_token}`)
+        .send({
+          pointIds: [pointId],
+        })
+        .expect(403);
+    });
+
+    it('deve retornar 404 quando usuário não existe', async () => {
+      await request(app.getHttpServer())
+        .patch('/user/00000000-0000-0000-0000-000000000000/points')
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          pointIds: [pointId],
+        })
+        .expect(404);
+    });
+
+    it('deve retornar 404 quando ponto não existe', async () => {
+      await request(app.getHttpServer())
+        .patch(`/user/${userId}/points`)
+        .set('Authorization', `Bearer ${companyToken}`)
+        .send({
+          pointIds: ['00000000-0000-0000-0000-000000000000'],
+        })
+        .expect(404);
+    });
+  });
 });
