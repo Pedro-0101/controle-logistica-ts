@@ -4,7 +4,9 @@ import { pointResponseSchema } from '../../point/dto/point-response.schema.js';
 
 export const userResponseSchema = z
   .object({
-    points: z.array(pointResponseSchema).optional(),
+    points: z.array(pointResponseSchema).optional().meta({
+      description: 'Pontos vinculados ao usuário',
+    }),
     id: z.string().meta({
       description: 'UUID único do usuário',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
@@ -25,13 +27,6 @@ export const userResponseSchema = z
     companyId: z.string().nullish().meta({
       description: 'ID da empresa vinculada ao usuário (opcional para administradores/suporte)',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
-    }),
-    points: z.array(z.object({
-      id: z.string(),
-      name: z.string(),
-      code: z.string(),
-    })).optional().meta({
-      description: 'Pontos vinculados ao usuário',
     }),
     createdAt: z.iso.datetime().meta({
       description: 'Data e hora da criação do registro',
