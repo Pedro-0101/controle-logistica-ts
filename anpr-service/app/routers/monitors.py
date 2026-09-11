@@ -1,0 +1,187 @@
+"""Continuous capture with expiring observations; no database or credentials in responses."""
+import asyncio
+import time
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+import cv2
+from fastapi import APIRouter, HTTPException, Request, Response
+from ..schemas import MonitorIn
+from ..config import settings
+from ..services.camera import CameraConfig, SnapshotClient
+from ..services.imagem import decodificar
+
+router = APIRouter(tags=["monitors"])
+
+
+def iso(value):
+    return value.isoformat() if value else None
+
+
+class CameraMonitor:
+    def __init__(self, camera_id, config, scheduler):
+        self.camera_id, self.config, self.scheduler = camera_id, config, scheduler
+        self.client = SnapshotClient(CameraConfig(config.host, config.port, config.user,
+                                   config.password, config.auth, config.camera_url))
+        self.status = "waiting"
+        self.observation_id = None
+        self.plate = self.confidence = self.box = self.evidence = None
+        self.captured_at = self.last_seen = None
+        self.last_mono = 0.0
+        self.reads = 0
+        self.epoch = 0
+        self.closed = False
+        self.task = None
+
+    def start(self):
+        self.task = asyncio.create_task(self._capture())
+
+    def invalidate(self, status):
+        self.status = status
+        self.observation_id = self.plate = self.confidence = self.box = self.evidence = None
+        self.captured_at = self.last_seen = None
+        self.reads = 0
+
+    def state(self):
+        if self.observation_id and time.monotonic() - self.last_mono >= self.config.stale_after_seconds:
+            self.invalidate("stale")
+        return dict(cameraId=self.camera_id, status=self.status, observationId=self.observation_id,
+                    placa=self.plate, confianca=self.confidence, box=self.box,
+                    capturedAt=iso(self.captured_at), lastSeenAt=iso(self.last_seen),
+                    expiresAt=iso(self.last_seen + timedelta(seconds=self.config.stale_after_seconds))
+                    if self.last_seen else None, consecutiveReads=self.reads)
+
+    def accept(self, result, error, epoch, captured, monotonic, jpeg):
+        if self.closed or epoch != self.epoch:
+            return
+        self.state()
+        if time.monotonic() - monotonic >= self.config.stale_after_seconds:
+            return
+        if error:
+            self.invalidate("offline")
+            return
+        if result is None:
+            # A blank frame breaks consecutive confirmation but tolerates transient occlusion.
+            if self.status != "confirmed":
+                self.reads = 0
+            if not self.observation_id:
+                self.status = "waiting"
+            return
+        plate = result.placa.valor
+        if plate != self.plate:
+            self.invalidate("candidate")
+            self.observation_id = str(uuid4())
+            self.plate = plate
+            self.captured_at = captured
+            self.evidence = jpeg
+        self.reads += 1
+        self.last_seen, self.last_mono = captured, monotonic
+        self.confidence = float(result.confianca)
+        self.box = list(result.box) if result.box else None
+        if self.reads >= self.config.confirmation_reads or self.status == "confirmed":
+            self.status = "confirmed"
+        else:
+            self.status = "candidate"
+
+    async def _capture(self):
+        failures = 0
+        while not self.closed:
+            captured, monotonic = datetime.now(UTC), time.monotonic()
+            try:
+                content, _ = await self.client.capture()
+                image = decodificar(content)
+                ok, encoded = cv2.imencode(".jpg", image)
+                if not ok:
+                    raise ValueError("Invalid JPEG")
+                epoch = self.epoch
+                self.scheduler.submit_monitor(self.camera_id, image,
+                    lambda result, error, e=epoch, c=captured, m=monotonic, j=encoded.tobytes():
+                        self.accept(result, error, e, c, m, j),
+                    expires_at=monotonic + self.config.stale_after_seconds)
+                failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.epoch += 1  # Discard inference from before this capture failure.
+                self.scheduler.remove_monitor(self.camera_id)
+                self.invalidate("offline")
+                failures += 1
+            delay = min(max(30, self.config.interval_seconds),
+                        self.config.interval_seconds * 2 ** min(failures, 5))
+            await asyncio.sleep(delay)
+
+    async def close(self):
+        self.closed = True
+        self.scheduler.remove_monitor(self.camera_id)
+        if self.task:
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+        await self.client.close()
+        self.invalidate("offline")
+
+
+class MonitorManager:
+    def __init__(self, scheduler):
+        self.scheduler = scheduler
+        self.monitors = {}
+        self.lock = asyncio.Lock()
+
+    async def upsert(self, camera_id, config):
+        async with self.lock:
+            old = self.monitors.get(camera_id)
+            if old and old.config == config:
+                return old
+            if not old and len(self.monitors) >= settings.max_monitors:
+                raise HTTPException(503, "Limite de câmeras atingido")
+            if old:
+                await old.close()
+            monitor = CameraMonitor(camera_id, config, self.scheduler)
+            self.monitors[camera_id] = monitor
+            monitor.start()
+            return monitor
+
+    def get(self, camera_id):
+        if camera_id not in self.monitors:
+            raise HTTPException(404, "Câmera não monitorada")
+        return self.monitors[camera_id]
+
+    async def remove(self, camera_id):
+        async with self.lock:
+            monitor = self.monitors.pop(camera_id, None)
+            if monitor:
+                await monitor.close()
+
+    async def close(self):
+        for monitor in list(self.monitors.values()):
+            await monitor.close()
+        self.monitors.clear()
+
+
+@router.put("/monitors/{camera_id}")
+async def upsert(camera_id: str, body: MonitorIn, request: Request):
+    return (await request.app.state.monitors.upsert(camera_id, body)).state()
+
+
+@router.get("/monitors")
+async def list_monitors(request: Request):
+    return list(request.app.state.monitors.monitors)
+
+
+@router.delete("/monitors/{camera_id}", status_code=204)
+async def remove(camera_id: str, request: Request):
+    await request.app.state.monitors.remove(camera_id)
+    return Response(status_code=204)
+
+
+@router.get("/monitors/{camera_id}")
+async def state(camera_id: str, request: Request):
+    return request.app.state.monitors.get(camera_id).state()
+
+
+@router.get("/monitors/{camera_id}/observations/{observation_id}/image")
+async def evidence(camera_id: str, observation_id: str, request: Request):
+    monitor = request.app.state.monitors.get(camera_id)
+    current = monitor.state()
+    if current['observationId'] != observation_id or not monitor.evidence:
+        raise HTTPException(409, "Observação expirada ou substituída")
+    return Response(monitor.evidence, media_type="image/jpeg", headers={"Cache-Control": "no-store"})

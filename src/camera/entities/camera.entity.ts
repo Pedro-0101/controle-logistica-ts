@@ -4,8 +4,12 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { ApiProperty, ApiHideProperty } from '@nestjs/swagger';
+import { AdminUnity } from '../../admin-unity/entities/admin-unity.entity.js';
+import { Point } from '../../point/entities/point.entity.js';
+import { Company } from '../../company/entities/company.entity.js';
 
 const enumAuthTypes = ['digest', 'basic'];
 
@@ -22,14 +26,16 @@ export class Camera {
     description: 'ID da unidade administrativa vinculada à câmera',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => AdminUnity, { name: 'FK_cameras_unit', onDelete: 'RESTRICT' })
   adminUnityId: string;
 
   @ApiProperty({
     description: 'ID do ponto (entrada/saída) vinculado à câmera',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => Point, { name: 'FK_cameras_point', onDelete: 'RESTRICT' })
   pointId: string;
 
   @ApiProperty({
@@ -94,7 +100,8 @@ export class Camera {
     description: 'ID da empresa vinculada à câmera',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => Company, { name: 'FK_cameras_company', onDelete: 'RESTRICT' })
   companyId: string;
 
   @ApiProperty({

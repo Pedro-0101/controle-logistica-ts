@@ -29,6 +29,7 @@ const createDto = {
   stateRegistration: '123',
   address: 'Rua X',
   email: 'x@x.com',
+  active: true,
   admin: { name: 'João', email: 'joao@x.com', password: 'senha123' },
 };
 

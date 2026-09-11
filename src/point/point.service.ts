@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreatePointDto } from './dto/create-point.dto.js';
 import { UpdatePointDto } from './dto/update-point.dto.js';
 import { Point } from './entities/point.entity.js';
+import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import {
   type Actor,
   companyScopeFilter,
@@ -17,10 +18,13 @@ export class PointService {
   constructor(
     @InjectRepository(Point)
     private readonly pointRepository: Repository<Point>,
+    @InjectRepository(AdminUnity)
+    private readonly unityRepository: Repository<AdminUnity>,
   ) {}
 
-  create(createPointDto: CreatePointDto, actor: Actor) {
+  async create(createPointDto: CreatePointDto, actor: Actor) {
     const companyId = requireCompanyId(actor);
+    await this.validateUnity(createPointDto.adminUnityId, companyId);
     const point = this.pointRepository.create({
       ...createPointDto,
       companyId,
@@ -49,6 +53,11 @@ export class PointService {
 
   async update(id: string, updatePointDto: UpdatePointDto, actor: Actor) {
     const point = await this.findOne(id, actor);
+    if ((updatePointDto.adminUnityId !== undefined && updatePointDto.adminUnityId !== point.adminUnityId) ||
+        (updatePointDto.type !== undefined && updatePointDto.type !== point.type)) {
+      throw new BadRequestException('Unidade e sentido do ponto são fixos; cadastre outro ponto para alterar o contexto');
+    }
+    await this.validateUnity(point.adminUnityId, point.companyId);
     Object.assign(point, updatePointDto, { updatedById: actor.userId });
     return this.pointRepository.save(point);
   }
@@ -56,5 +65,11 @@ export class PointService {
   async remove(id: string, actor: Actor) {
     const point = await this.findOne(id, actor);
     return this.pointRepository.remove(point);
+  }
+
+  private async validateUnity(id: string, companyId: string) {
+    if (!await this.unityRepository.findOneBy({ id, companyId })) {
+      throw new BadRequestException('Unidade não encontrada na empresa');
+    }
   }
 }

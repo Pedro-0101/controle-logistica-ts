@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+import { AdminUnity } from '../../admin-unity/entities/admin-unity.entity.js';
+import { Company } from '../../company/entities/company.entity.js';
 
 const enumPointTypes = ['entry', 'exit', 'both'];
 
@@ -45,14 +48,16 @@ export class Point {
     description: 'ID da unidade administrativa vinculada ao ponto',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => AdminUnity, { name: 'FK_points_unit', onDelete: 'RESTRICT' })
   adminUnityId: string;
 
   @ApiProperty({
     description: 'ID da empresa vinculada ao ponto',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => Company, { name: 'FK_points_company', onDelete: 'RESTRICT' })
   companyId: string;
 
   @ApiProperty({

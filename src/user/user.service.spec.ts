@@ -327,7 +327,7 @@ describe('UserService', () => {
         id: '1',
         role: 'user',
         companyId: 'company-1',
-        points: [{ id: 'p1' }, { id: 'p2' }],
+        points: [Object.assign(new Point(), { id: 'p1' }), Object.assign(new Point(), { id: 'p2' })],
       };
       repository.findOneBy.mockResolvedValue(userWithPoints);
       repository.save.mockResolvedValue(userWithPoints);

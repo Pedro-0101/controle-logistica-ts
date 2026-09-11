@@ -59,14 +59,14 @@ class PlacaRecognizer:
             lang=lang,
         )
 
-    def reconhecer(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
+    def reconhecer(self, imagem: np.ndarray, full_frame_fallback: bool = True) -> list[CandidatoPlaca]:
         """Retorna os candidatos a placa em uma imagem (BGR, OpenCV).
 
         Tenta YOLO+PaddleOCR primeiro. Se YOLO não detectar nada,
         faz fallback para PaddleOCR na imagem inteira.
         """
         candidatos = self._reconhecer_yolo(imagem)
-        if candidatos:
+        if candidatos or not full_frame_fallback:
             return candidatos
         return self._reconhecer_paddle_completo(imagem)
 
@@ -125,9 +125,9 @@ class PlacaRecognizer:
                     )
         return candidatos
 
-    def reconhecer_melhor(self, imagem: np.ndarray) -> CandidatoPlaca | None:
+    def reconhecer_melhor(self, imagem: np.ndarray, full_frame_fallback: bool = True) -> CandidatoPlaca | None:
         """Retorna apenas o candidato de maior confiança (ou None)."""
-        candidatos = self.reconhecer(imagem)
+        candidatos = self.reconhecer(imagem, full_frame_fallback=full_frame_fallback)
         if not candidatos:
             return None
         return max(candidatos, key=lambda c: c.confianca)

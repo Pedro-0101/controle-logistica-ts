@@ -4,6 +4,7 @@ import { ZodValidationPipe, ZodResponse } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
+import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
@@ -35,9 +36,12 @@ export class MovementController {
 
   @Post('from-camera')
   @ApiOperation({
-    summary: 'Criar movimento a partir da câmera (ANPR)',
+    summary: 'Criar movimento a partir da câmera (atalho legado)',
     description:
-      'Captura o snapshot da câmera, reconhece a placa do veículo e registra a entrada ou saída.\n\n' +
+      'Busca a observação atual da câmera e registra o movimento em uma única chamada.\n\n' +
+      '**Recomendação:** Prefira usar `GET /camera/:id/current-observation` + `POST /movement/from-observation` ' +
+      'para ter controle visual do que está sendo confirmado pelo porteiro.\n\n' +
+      'Equivalente a chamar `current-observation` + `from-observation` internamente.\n\n' +
       'O front envia apenas o `cameraId` (e dados operacionais opcionais) — nada sobre o veículo. ' +
       'O backend resolve o tipo do movimento (entrada/saída) a partir do ponto vinculado à câmera, ' +
       'busca/cria o veículo pela placa reconhecida e retorna o movimento com os dados do veículo.',
@@ -54,6 +58,42 @@ export class MovementController {
   ) {
     return this.movementService.createFromCamera(createMovementFromCameraDto, user);
   }
+
+  @Post('from-observation')
+  @ApiOperation({
+    summary: 'Confirmar observação e registrar movimento',
+    description:
+      'Confirma a leitura de placa de uma câmera e registra a entrada/saída do veículo.\n\n' +
+      '**Fluxo de uso:**\n' +
+      '1. Front consulta `GET /camera/:id/current-observation` e obtém o `observationId` quando status = `"confirmed"`\n' +
+      '2. Porteiro confirma o atendimento (ex: abre cancela)\n' +
+      '3. Front envia este endpoint com o `observationId`\n' +
+      '4. Backend valida se a observação ainda está fresca e consistente com o estado atual da câmera\n' +
+      '5. Busca ou cria o veículo pela placa reconhecida\n' +
+      '6. Registra o movimento (entrada/saída) vinculado ao ponto da câmera\n\n' +
+      '**Idempotência:**\n' +
+      'Duas confirmações da mesma observação retornam o mesmo movimento (protegido por lock pessimista no banco). ' +
+      'Isso permite retry seguro caso a resposta HTTP original tenha sido perdida.\n\n' +
+      '**Validações:**\n' +
+      '- A observação deve estar com status `"confirmed"` e não expirada\n' +
+      '- O `observationId` deve corresponder à observação atual da câmera no Python\n' +
+      '- A câmera, ponto e unidade devem estar ativos e vinculados à empresa do usuário\n' +
+      '- O tipo do movimento (entry/exit) é resolvido automaticamente pelo ponto da câmera\n\n' +
+      '**Erros comuns:**\n' +
+      '- 409: Observação expirou (o veículo saiu da câmera) → consultar nova observação\n' +
+      '- 404: Observação não encontrada ou não pertence à empresa\n' +
+      '- 400: Ponto inativo ou tipo incompatível',
+  })
+  @ZodResponse({ status: 201, type: MovementFromCameraResponseDto })
+  @ApiResponse({ status: 400, description: 'Dados de entrada inválidos, ponto inativo ou tipo incompatível' })
+  @ApiResponse({ status: 401, description: 'Token JWT ausente ou inválido' })
+  @ApiResponse({ status: 404, description: 'Observação não encontrada ou não pertence à empresa do usuário' })
+  @ApiResponse({ status: 409, description: 'Observação expirada, substituída por outra ou indisponível no Python' })
+  @ApiResponse({ status: 422, description: 'Veículo inativo' })
+  createFromObservation(
+    @Body(new ZodValidationPipe(CreateMovementFromObservationDto)) dto: CreateMovementFromObservationDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) { return this.movementService.createFromObservation(dto, actor); }
 
   @Get()
   @ApiOperation({

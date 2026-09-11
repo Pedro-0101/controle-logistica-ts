@@ -1,40 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { AppModule } from './../src/app.module.js';
 import { User } from './../src/user/entities/user.entity.js';
 
-const TEST_DB = 'controle_logistica_test';
 const ROOT_EMAIL = 'e2e-root@test.com';
 const ROOT_PASSWORD = 'root123';
 
 describe('Integração (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
-  let adminPool: Pool;
 
   let rootToken: string;
   let companyId: string;
+  let unitId: string;
   let companyAdminEmail = 'admin.empresa@test.com';
   let companyAdminPassword = 'senha123';
   let companyToken: string;
 
   beforeAll(async () => {
-    adminPool = new Pool({
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number(process.env.DB_PORT ?? 5434),
-      user: process.env.DB_USERNAME ?? 'postgres',
-      password: process.env.DB_PASSWORD ?? 'postgres',
-      database: 'postgres',
-    });
-
-    await adminPool.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-    await adminPool.query(`CREATE DATABASE ${TEST_DB}`);
-    process.env.DB_DATABASE = TEST_DB;
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -56,12 +42,7 @@ describe('Integração (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-    if (dataSource.isInitialized) {
-      await dataSource.destroy();
-    }
-    await adminPool.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-    await adminPool.end();
+    await app?.close();
   });
 
   it('root deve autenticar e receber um token', async () => {
@@ -121,6 +102,12 @@ describe('Integração (e2e)', () => {
   });
 
   it('administrador da empresa deve cadastrar uma câmera', async () => {
+    const unitRes = await request(app.getHttpServer())
+      .post('/admin-unity')
+      .set('Authorization', `Bearer ${companyToken}`)
+      .send({ name: 'Unidade E2E', code: 'UNIT-E2E', address: 'Rua Teste' })
+      .expect(201);
+    unitId = unitRes.body.id;
     const pointRes = await request(app.getHttpServer())
       .post('/point')
       .set('Authorization', `Bearer ${companyToken}`)
@@ -128,7 +115,7 @@ describe('Integração (e2e)', () => {
         name: 'Portão 1',
         code: 'P-001',
         type: 'entry',
-        adminUnityId: 'unidade-e2e',
+        adminUnityId: unitRes.body.id,
       })
       .expect(201);
 
@@ -136,7 +123,7 @@ describe('Integração (e2e)', () => {
       .post('/camera')
       .set('Authorization', `Bearer ${companyToken}`)
       .send({
-        adminUnityId: 'unidade-e2e',
+        adminUnityId: unitRes.body.id,
         pointId: pointRes.body.id,
         name: 'Câmera Portaria',
         ip: '192.168.11.241',
@@ -193,7 +180,7 @@ describe('Integração (e2e)', () => {
           name: 'Portão Teste',
           code: 'P-TEST',
           type: 'both',
-          adminUnityId: 'unidade-e2e',
+          adminUnityId: unitId,
         })
         .expect(201);
 

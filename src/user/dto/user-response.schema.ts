@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
+import { pointResponseSchema } from '../../point/dto/point-response.schema.js';
 
 export const userResponseSchema = z
   .object({
+    points: z.array(pointResponseSchema).optional(),
     id: z.string().meta({
       description: 'UUID único do usuário',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],

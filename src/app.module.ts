@@ -13,6 +13,9 @@ import { AuthModule } from './auth/auth.module.js';
 import { CameraModule } from './camera/camera.module.js';
 import { AnprModule } from './anpr/anpr.module.js';
 import { PointModule } from './point/point.module.js';
+import { MonitoringModule } from './monitoring/monitoring.module.js';
+import { APP_FILTER } from '@nestjs/core';
+import { DatabaseErrorFilter } from './common/database-error.filter.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -21,7 +24,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ObserveModule.forRootAsync({
+    ...(process.env.NODE_ENV === 'test' ? [] : [ObserveModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -32,7 +35,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
           ignore: (req: { url?: string }) => req.url?.startsWith('/anpr') ?? false,
         },
       }),
-    }),
+    })]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -44,7 +47,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
       }),
     }),
     UserModule,
@@ -56,8 +59,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     CameraModule,
     AnprModule,
     PointModule,
+    MonitoringModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_FILTER, useClass: DatabaseErrorFilter }],
 })
 export class AppModule {}

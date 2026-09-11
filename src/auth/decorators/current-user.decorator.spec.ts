@@ -1,6 +1,7 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { CurrentUser } from './current-user.decorator.js';
+import type { AuthenticatedUser } from '../strategies/jwt.strategy.js';
 
 interface RouteArgEntry {
   index: number;
@@ -8,7 +9,7 @@ interface RouteArgEntry {
   data: unknown;
 }
 
-function getRouteArgEntry(data?: unknown): RouteArgEntry {
+function getRouteArgEntry(data?: keyof AuthenticatedUser): RouteArgEntry {
   class TestClass {
     method() {}
   }

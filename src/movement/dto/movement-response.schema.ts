@@ -3,6 +3,7 @@ import { createZodDto } from 'zod-nest';
 
 export const movementResponseSchema = z
   .object({
+    observationId: z.string().uuid().nullish(),
     id: z.string().meta({
       description: 'UUID único do movimento',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],

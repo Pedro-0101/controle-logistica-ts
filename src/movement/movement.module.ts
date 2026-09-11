@@ -7,6 +7,7 @@ import { CameraModule } from '../camera/camera.module.js';
 import { AnprModule } from '../anpr/anpr.module.js';
 import { VehicleModule } from '../vehicle/vehicle.module.js';
 import { PointModule } from '../point/point.module.js';
+import { MonitoringModule } from '../monitoring/monitoring.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PointModule } from '../point/point.module.js';
     AnprModule,
     VehicleModule,
     PointModule,
+    MonitoringModule,
   ],
   controllers: [MovementController],
   providers: [MovementService],

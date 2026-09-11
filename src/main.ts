@@ -23,7 +23,9 @@ async function bootstrap() {
     .addTag('Companies', 'Gestão de empresas')
     .addTag('Admin Units', 'Unidades administrativas')
     .addTag('Vehicles', 'Veículos')
-    .addTag('Cameras', 'Câmeras IP para reconhecimento de placas')
+    .addTag('Cameras', 'Câmeras IP, monitoramento contínuo de placas e evidências fotográficas. ' +
+      'O monitoramento é feito em background: a cada ~1s, o Python captura a imagem, executa OCR ' +
+      'e mantém o estado mais recente. O front consulta periodicamente para exibir ao porteiro.')
     .addTag('Movements', 'Entrada e saída de veículos')
     .addTag(
       'ANPR',

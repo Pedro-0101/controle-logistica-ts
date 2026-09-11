@@ -47,20 +47,14 @@ export class VehicleService {
     if (existing) {
       return existing;
     }
-    await repository.upsert(
-      {
-        plate,
-        code: plate,
-        type: 'visitor',
-        active: true,
-        companyId,
-        createdById: actor.userId,
-      },
-      {
-        conflictPaths: ['companyId', 'plate'],
-        skipUpdateIfNoValuesChanged: true,
-      },
-    );
+    await repository.createQueryBuilder().insert().into(Vehicle).values({
+      plate,
+      code: plate,
+      type: 'visitor',
+      active: true,
+      companyId,
+      createdById: actor.userId,
+    }).orIgnore().execute();
     const vehicle = await repository.findOneBy({ plate, companyId });
     if (!vehicle) throw new ConflictException('Veículo não pôde ser criado; tente novamente');
     return vehicle;

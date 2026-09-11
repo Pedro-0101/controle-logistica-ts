@@ -1,4 +1,5 @@
-import { ExecutionContext, Reflector } from '@nestjs/core';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 

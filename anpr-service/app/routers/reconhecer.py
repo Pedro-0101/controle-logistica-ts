@@ -1,11 +1,8 @@
 """Rotas de reconhecimento de placa (câmera IP ou imagem enviada)."""
 
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
-from ..anpr.recognizer import get_recognizer
 from ..schemas import (
     HealthOut,
     PlacaOut,
@@ -17,13 +14,11 @@ from ..services.camera import CameraConfig, capturar_snapshot
 from ..services.erros import (
     CameraNaoConfiguradaError,
     CameraSnapshotError,
-    PlacaNaoReconhecidaError,
 )
 from ..services.imagem import decodificar, decodificar_base64, salvar
 
 router = APIRouter(tags=["anpr"])
 
-_ocr_pool = ThreadPoolExecutor(max_workers=1)
 
 
 @router.get("/health", response_model=HealthOut, summary="Healthcheck")
@@ -41,7 +36,7 @@ async def health() -> HealthOut:
         502: {"description": "Falha ao conectar ou capturar imagem da câmera"},
     },
 )
-async def reconhecer_camera(body: ReconhecerCameraIn) -> ReconhecerCameraOut:
+async def reconhecer_camera(body: ReconhecerCameraIn, request: Request) -> ReconhecerCameraOut:
     """Captura um snapshot da câmera IP e retorna a placa via ANPR (PaddleOCR)."""
     camera = CameraConfig(
         ip=body.host,
@@ -65,8 +60,9 @@ async def reconhecer_camera(body: ReconhecerCameraIn) -> ReconhecerCameraOut:
             status_code=502, detail="Imagem inválida retornada pela câmera"
         ) from exc
 
-    loop = asyncio.get_running_loop()
-    melhor = await loop.run_in_executor(_ocr_pool, _reconhecer_ou_422, imagem)
+    melhor = await request.app.state.inference.recognize(imagem)
+    if melhor is None:
+        raise HTTPException(422, "Placa não reconhecida na imagem")
     foto_path = salvar(conteudo)
 
     return ReconhecerCameraOut(
@@ -89,15 +85,16 @@ async def reconhecer_camera(body: ReconhecerCameraIn) -> ReconhecerCameraOut:
         422: {"description": "Placa não reconhecida na imagem"},
     },
 )
-async def reconhecer_imagem(body: ReconhecerImagemIn) -> PlacaOut:
+async def reconhecer_imagem(body: ReconhecerImagemIn, request: Request) -> PlacaOut:
     """Reconhece a placa em uma imagem enviada em base64 (sem acesso à câmera)."""
     try:
         imagem = decodificar_base64(body.imagem_base64)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    loop = asyncio.get_running_loop()
-    melhor = await loop.run_in_executor(_ocr_pool, _reconhecer_ou_422, imagem)
+    melhor = await request.app.state.inference.recognize(imagem)
+    if melhor is None:
+        raise HTTPException(422, "Placa não reconhecida na imagem")
 
     return PlacaOut(
         placa=melhor.placa.valor,
@@ -107,17 +104,3 @@ async def reconhecer_imagem(body: ReconhecerImagemIn) -> PlacaOut:
         box=list(melhor.box) if melhor.box else None,
     )
 
-
-def _reconhecer_ou_422(imagem):
-    """Executa o OCR e retorna o melhor candidato ou lança 422."""
-    try:
-        melhor = get_recognizer().reconhecer_melhor(imagem)
-    except PlacaNaoReconhecidaError:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Erro no ANPR: {exc}") from exc
-
-    if melhor is None:
-        raise HTTPException(status_code=422, detail="Placa não reconhecida na imagem")
-
-    return melhor

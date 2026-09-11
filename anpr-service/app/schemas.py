@@ -42,3 +42,9 @@ class ReconhecerImagemIn(BaseModel):
 
 class HealthOut(BaseModel):
     status: str = "ok"
+
+
+class MonitorIn(ReconhecerCameraIn):
+    interval_seconds: float = Field(1, ge=0.1, le=3600)
+    stale_after_seconds: float = Field(5, ge=0.2, le=3600)
+    confirmation_reads: int = Field(2, ge=1, le=20)

@@ -4,8 +4,10 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+import { Company } from '../../company/entities/company.entity.js';
 
 @Entity('admin_unities')
 export class AdminUnity {
@@ -56,7 +58,8 @@ export class AdminUnity {
     description: 'ID da empresa vinculada à unidade',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => Company, { name: 'FK_units_company', onDelete: 'RESTRICT' })
   companyId: string;
 
   @ApiProperty({

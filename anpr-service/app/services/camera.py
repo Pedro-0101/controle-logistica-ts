@@ -3,7 +3,9 @@
 Sem dependência de banco: a câmera é representada por um dataclass simples.
 """
 
+import asyncio
 from dataclasses import dataclass
+from ..config import settings
 
 import httpx
 
@@ -45,55 +47,69 @@ def _montar_auth(camera: CameraConfig) -> httpx.Auth:
 
 def _montar_base(camera: CameraConfig) -> str:
     """Monta a base URL (host:port) a partir da câmera."""
+    if camera.porta == 80:
+        return f"http://{camera.ip}"
     return f"http://{camera.ip}:{camera.porta}"
 
 
-async def _descobrir_snapshot(
-    base: str, auth: httpx.Auth, timeout: float = 5.0
-) -> str | None:
-    """Testa endpoints comuns de snapshot e retorna a URL que funcionou."""
-    async with httpx.AsyncClient(auth=auth, timeout=timeout) as client:
-        for caminho in CAMINHOS_SNAPSHOT:
-            url = f"{base}{caminho}"
-            try:
-                resp = await client.get(url)
-                if resp.status_code == 200 and resp.content:
-                    return url
-            except httpx.HTTPError:
-                continue
-    return None
+def _is_image(content: bytes) -> bool:
+    return content.startswith(b"\xff\xd8\xff") or content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+class SnapshotClient:
+    """Per-camera reusable connection pool; discovered URL is retained until failure."""
+    def __init__(self, camera: CameraConfig):
+        self.camera = camera
+        self.url = camera.url_snapshot
+        self.client = httpx.AsyncClient(auth=_montar_auth(camera), timeout=5.0)
+
+    async def _get(self, url):
+        async with self.client.stream("GET", url) as response:
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(body) + len(chunk) > settings.max_snapshot_bytes:
+                    raise CameraSnapshotError("Snapshot excede o limite de tamanho")
+                body.extend(chunk)
+            return bytes(body)
+
+    async def capture(self) -> tuple[bytes, str]:
+        try:
+            async with asyncio.timeout(settings.capture_timeout_seconds):
+                return await self._capture()
+        except TimeoutError as exc:
+            raise CameraSnapshotError("Tempo de captura excedido") from exc
+
+    async def _capture(self) -> tuple[bytes, str]:
+        if not self.url:
+            for path in CAMINHOS_SNAPSHOT:
+                candidate = f"{_montar_base(self.camera)}{path}"
+                try:
+                    content = await self._get(candidate)
+                    if _is_image(content):
+                        self.url = candidate
+                        return content, candidate
+                except (httpx.HTTPError, CameraSnapshotError):
+                    continue
+            raise CameraNaoConfiguradaError("Nenhum endpoint de snapshot válido respondeu")
+        try:
+            content = await self._get(self.url)
+            if not _is_image(content):
+                raise CameraSnapshotError("Snapshot vazio ou formato inválido")
+            return content, self.url
+        except (httpx.HTTPError, CameraSnapshotError) as exc:
+            if not self.camera.url_snapshot:
+                self.url = None
+            # HTTP exceptions contain URLs/credentials. Never expose their text.
+            raise CameraSnapshotError("Falha ao capturar snapshot da câmera") from exc
+
+    async def close(self):
+        await self.client.aclose()
 
 
 async def capturar_snapshot(camera: CameraConfig) -> tuple[bytes, str]:
-    """Baixa o snapshot JPEG e retorna (conteudo, url_utilizada).
-
-    Raises:
-        CameraNaoConfiguradaError: Se a câmera não possui URL e a
-            auto-descoberta não encontrou nenhum endpoint válido.
-        CameraSnapshotError: Se a captura falhar.
-    """
-    auth = _montar_auth(camera)
-    base = _montar_base(camera)
-    timeout = 5.0
-
-    url = camera.url_snapshot
-    if not url:
-        url = await _descobrir_snapshot(base, auth, timeout)
-        if url is None:
-            raise CameraNaoConfiguradaError(
-                "Nenhum endpoint de snapshot respondeu. "
-                "Verifique IP, porta, credenciais ou configure url_snapshot manualmente."
-            )
-
+    client = SnapshotClient(camera)
     try:
-        async with httpx.AsyncClient(auth=auth, timeout=timeout) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            conteudo = resp.content
-    except httpx.HTTPError as exc:
-        raise CameraSnapshotError(f"Falha ao capturar snapshot: {exc}") from exc
-
-    if not conteudo:
-        raise CameraSnapshotError("Snapshot vazio")
-
-    return conteudo, url
+        return await client.capture()
+    finally:
+        await client.close()

@@ -1,140 +1,159 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import type { Repository } from 'typeorm';
 import { PointService } from './point.service.js';
 import { Point } from './entities/point.entity.js';
+import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import type { Actor } from '../auth/company-scope.js';
-
-const rootActor: Actor = {
-  userId: 'root-id',
-  email: 'root@sistema.com',
-  role: 'admin',
-  companyId: null,
-};
-
-const companyActor: Actor = {
-  userId: 'user-id',
-  email: 'user@empresa.com',
+const actor: Actor = {
+  userId: 'u',
+  email: 'u@test.com',
   role: 'admin',
   companyId: 'company-1',
 };
-
-describe('PointService', () => {
-  let service: PointService;
-  const repository = {
-    create: vi.fn((data: Partial<Point>) => data),
-    save: vi.fn((data: Partial<Point>) => data),
+const root = { ...actor, companyId: null };
+const context = {
+  id: 'point',
+  adminUnityId: 'unit-1',
+  companyId: 'company-1',
+  type: 'entry',
+  name: 'Point',
+};
+function mockRepository() {
+  return {
+    create: vi.fn((v) => v),
+    save: vi.fn(async (v) => v),
     find: vi.fn(),
     findOneBy: vi.fn(),
-    remove: vi.fn((data: Partial<Point>) => data),
+    remove: vi.fn(async (v) => v),
   };
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PointService,
-        {
-          provide: getRepositoryToken(Point),
-          useValue: repository,
-        },
-      ],
-    }).compile();
-
-    service = module.get<PointService>(PointService);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  describe('create', () => {
-    it('usuário comum deve forçar companyId da própria empresa', () => {
-      service.create({ name: 'P1' } as never, companyActor);
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'P1',
-          companyId: 'company-1',
-          createdById: 'user-id',
-        }),
-      );
+}
+describe('PointService', () => {
+  let repo: ReturnType<typeof mockRepository>;
+  let units: ReturnType<typeof mockRepository>;
+  let service: PointService;
+  beforeEach(() => {
+    repo = mockRepository();
+    units = mockRepository();
+    repo.findOneBy.mockResolvedValue({ ...context });
+    units.findOneBy.mockResolvedValue({
+      id: 'unit-1',
+      companyId: 'company-1',
+      active: true,
     });
-
-    it('root sem empresa deve ser bloqueado ao criar ponto', () => {
-      expect(() => service.create({ name: 'P1' } as never, rootActor)).toThrow(
-        ForbiddenException,
-      );
-    });
+    service = new PointService(
+      repo as unknown as Repository<Point>,
+      units as unknown as Repository<AdminUnity>,
+    );
   });
-
-  describe('findAll', () => {
-    it('usuário comum deve filtrar pontos pela própria empresa', async () => {
-      repository.find.mockResolvedValue([{ id: '1' }]);
-      await service.findAll(companyActor);
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { companyId: 'company-1' },
-      });
+  it('creates with validated company unit and actor', async () => {
+    await service.create(
+      { adminUnityId: 'unit-1', name: 'Point', type: 'entry' } as never,
+      actor,
+    );
+    expect(units.findOneBy).toHaveBeenCalledWith({
+      id: 'unit-1',
+      companyId: 'company-1',
     });
-
-    it('root deve listar sem filtro de empresa', async () => {
-      repository.find.mockResolvedValue([{ id: '1' }]);
-      await service.findAll(rootActor);
-      expect(repository.find).toHaveBeenCalledWith({ where: undefined });
-    });
-  });
-
-  describe('findOne', () => {
-    it('usuário comum deve buscar com filtro de empresa', async () => {
-      repository.findOneBy.mockResolvedValue({ id: '1' });
-      await service.findOne('1', companyActor);
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: '1',
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
         companyId: 'company-1',
-      });
+        createdById: 'u',
+        type: 'entry',
+      }),
+    );
+  });
+  it('rejects companyless creation', async () => {
+    await expect(service.create(context as never, root)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('rejects nonexistent or foreign-company unit via scoped lookup', async () => {
+    units.findOneBy.mockResolvedValue(null);
+    await expect(service.create(context as never, actor)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('permits administration of inactive units', async () => {
+    units.findOneBy.mockResolvedValue({ id: 'unit-1', active: false });
+    await service.create(context as never, actor);
+    expect(repo.save).toHaveBeenCalled();
+  });
+  it('lists company and root scope', async () => {
+    await service.findAll(actor);
+    expect(repo.find).toHaveBeenLastCalledWith({
+      where: { companyId: 'company-1' },
     });
-
-    it('deve lançar 404 quando não encontra o ponto', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-      await expect(service.findOne('1', companyActor)).rejects.toThrow(
-        NotFoundException,
-      );
+    await service.findAll(root);
+    expect(repo.find).toHaveBeenLastCalledWith({ where: undefined });
+  });
+  it('finds tenant point and rejects missing', async () => {
+    expect(await service.findOne('point', actor)).toEqual(context);
+    expect(repo.findOneBy).toHaveBeenCalledWith({
+      id: 'point',
+      companyId: 'company-1',
+    });
+    repo.findOneBy.mockResolvedValue(null);
+    await expect(service.findOne('missing', root)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+  it('updates ordinary fields and validates stored unit', async () => {
+    await service.update(
+      'point',
+      { name: 'Rename', active: false } as never,
+      actor,
+    );
+    expect(repo.save).toHaveBeenCalledWith({
+      ...context,
+      name: 'Rename',
+      active: false,
+      updatedById: 'u',
+    });
+    expect(units.findOneBy).toHaveBeenCalledWith({
+      id: 'unit-1',
+      companyId: 'company-1',
     });
   });
-
-  describe('update', () => {
-    it('deve forçar companyId do ator e registrar updatedById', async () => {
-      repository.findOneBy.mockResolvedValue({
-        id: '1',
-        name: 'P1',
-        companyId: 'company-1',
-      });
-      await service.update('1', { name: 'P2' } as never, companyActor);
-
-      expect(repository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: '1',
-          name: 'P2',
-          companyId: 'company-1',
-          updatedById: 'user-id',
-        }),
-      );
+  it('accepts explicitly unchanged context during root edit', async () => {
+    await service.update(
+      'point',
+      { adminUnityId: 'unit-1', type: 'entry' } as never,
+      root,
+    );
+    expect(repo.save).toHaveBeenCalled();
+    expect(units.findOneBy).toHaveBeenCalledWith({
+      id: 'unit-1',
+      companyId: 'company-1',
     });
   });
-
-  describe('remove', () => {
-    it('deve remover o ponto encontrado', async () => {
-      repository.findOneBy.mockResolvedValue({ id: '1' });
-      await service.remove('1', companyActor);
-      expect(repository.remove).toHaveBeenCalledWith({ id: '1' });
-    });
-
-    it('deve lançar 404 ao remover ponto inexistente', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-      await expect(service.remove('1', companyActor)).rejects.toThrow(
-        NotFoundException,
-      );
-    });
+  it.each([{ adminUnityId: 'unit-2' }, { type: 'exit' }])(
+    'rejects context reassignment %j',
+    async (update) => {
+      await expect(
+        service.update('point', update as never, actor),
+      ).rejects.toThrow(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    },
+  );
+  it('rejects editing corrupted or deleted unit context', async () => {
+    units.findOneBy.mockResolvedValue(null);
+    await expect(
+      service.update('point', { name: 'Rename' } as never, actor),
+    ).rejects.toThrow(BadRequestException);
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('removes found point and rejects missing', async () => {
+    await service.remove('point', actor);
+    expect(repo.remove).toHaveBeenCalledWith(context);
+    repo.findOneBy.mockResolvedValue(null);
+    await expect(service.remove('missing', actor)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

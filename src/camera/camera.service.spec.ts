@@ -1,151 +1,187 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import type { Repository } from 'typeorm';
 import { CameraService } from './camera.service.js';
 import { Camera } from './entities/camera.entity.js';
+import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
+import { Point } from '../point/entities/point.entity.js';
 import type { Actor } from '../auth/company-scope.js';
-
-const rootActor: Actor = {
-  userId: 'root-id',
-  email: 'root@sistema.com',
-  role: 'admin',
-  companyId: null,
-};
-
-const companyActor: Actor = {
-  userId: 'user-id',
-  email: 'user@empresa.com',
+const actor: Actor = {
+  userId: 'u',
+  email: 'u@test.com',
   role: 'admin',
   companyId: 'company-1',
 };
-
-describe('CameraService', () => {
-  let service: CameraService;
-  const repository = {
-    create: vi.fn((data: Partial<Camera>) => data),
-    save: vi.fn((data: Partial<Camera>) => data),
+const root = { ...actor, companyId: null };
+const context = {
+  id: 'camera',
+  companyId: 'company-1',
+  adminUnityId: 'unit-1',
+  pointId: 'point-1',
+  name: 'Camera',
+};
+function mockRepository() {
+  return {
+    create: vi.fn((v) => v),
+    save: vi.fn(async (v) => v),
     find: vi.fn(),
     findOneBy: vi.fn(),
-    remove: vi.fn((data: Partial<Camera>) => data),
+    remove: vi.fn(async (v) => v),
   };
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CameraService,
-        {
-          provide: getRepositoryToken(Camera),
-          useValue: repository,
-        },
-      ],
-    }).compile();
-
-    service = module.get<CameraService>(CameraService);
+}
+describe('CameraService', () => {
+  let repo: ReturnType<typeof mockRepository>;
+  let units: ReturnType<typeof mockRepository>;
+  let points: ReturnType<typeof mockRepository>;
+  let service: CameraService;
+  beforeEach(() => {
+    repo = mockRepository();
+    units = mockRepository();
+    points = mockRepository();
+    repo.findOneBy.mockResolvedValue({ ...context });
+    units.findOneBy.mockResolvedValue({
+      id: 'unit-1',
+      companyId: 'company-1',
+      active: true,
+    });
+    points.findOneBy.mockResolvedValue({
+      id: 'point-1',
+      adminUnityId: 'unit-1',
+      companyId: 'company-1',
+      active: true,
+    });
+    service = new CameraService(
+      repo as unknown as Repository<Camera>,
+      units as unknown as Repository<AdminUnity>,
+      points as unknown as Repository<Point>,
+    );
   });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  describe('create', () => {
-    it('usuário comum deve forçar companyId da própria empresa', () => {
-      service.create({ name: 'Portaria 1' } as never, companyActor);
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'Portaria 1',
-          companyId: 'company-1',
-          createdById: 'user-id',
-        }),
-      );
+  it('creates with scoped unit and point and stamps actor', async () => {
+    await service.create(
+      { adminUnityId: 'unit-1', pointId: 'point-1', name: 'Camera' } as never,
+      actor,
+    );
+    expect(units.findOneBy).toHaveBeenCalledWith({
+      id: 'unit-1',
+      companyId: 'company-1',
     });
-
-    it('root sem empresa deve ser bloqueado ao criar câmera', () => {
-      expect(() =>
-        service.create({ name: 'Portaria 1' } as never, rootActor),
-      ).toThrow(ForbiddenException);
+    expect(points.findOneBy).toHaveBeenCalledWith({
+      id: 'point-1',
+      companyId: 'company-1',
     });
-
-    it('deve repassar o pointId da câmera para o repositório', () => {
-      service.create(
-        { name: 'Portaria 1', pointId: 'point-1' } as never,
-        companyActor,
-      );
-
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ pointId: 'point-1' }),
-      );
-    });
-  });
-
-  describe('findAll', () => {
-    it('usuário comum deve filtrar câmeras pela própria empresa', async () => {
-      repository.find.mockResolvedValue([{ id: '1' }]);
-      await service.findAll(companyActor);
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { companyId: 'company-1' },
-      });
-    });
-
-    it('root deve listar sem filtro de empresa', async () => {
-      repository.find.mockResolvedValue([{ id: '1' }]);
-      await service.findAll(rootActor);
-      expect(repository.find).toHaveBeenCalledWith({ where: undefined });
-    });
-  });
-
-  describe('findOne', () => {
-    it('usuário comum deve buscar com filtro de empresa', async () => {
-      repository.findOneBy.mockResolvedValue({ id: '1' });
-      await service.findOne('1', companyActor);
-      expect(repository.findOneBy).toHaveBeenCalledWith({
-        id: '1',
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
         companyId: 'company-1',
-      });
+        createdById: 'u',
+        pointId: 'point-1',
+      }),
+    );
+  });
+  it('rejects companyless creation', async () => {
+    await expect(service.create(context as never, root)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(units.findOneBy).not.toHaveBeenCalled();
+  });
+  it('rejects missing or foreign-company unit via scoped lookup', async () => {
+    units.findOneBy.mockResolvedValue(null);
+    await expect(service.create(context as never, actor)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(points.findOneBy).not.toHaveBeenCalled();
+  });
+  it('rejects missing or foreign-company point via scoped lookup', async () => {
+    points.findOneBy.mockResolvedValue(null);
+    await expect(service.create(context as never, actor)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('rejects point belonging to another unit in same company', async () => {
+    points.findOneBy.mockResolvedValue({ adminUnityId: 'unit-2' });
+    await expect(service.create(context as never, actor)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('permits administrative registration under inactive context', async () => {
+    units.findOneBy.mockResolvedValue({ id: 'unit-1', active: false });
+    points.findOneBy.mockResolvedValue({
+      adminUnityId: 'unit-1',
+      active: false,
     });
-
-    it('deve lançar 404 quando não encontra a câmera', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-      await expect(service.findOne('1', companyActor)).rejects.toThrow(
-        NotFoundException,
-      );
+    await service.create(context as never, actor);
+    expect(repo.save).toHaveBeenCalled();
+  });
+  it('lists tenant scoped and root results', async () => {
+    await service.findAll(actor);
+    expect(repo.find).toHaveBeenLastCalledWith({
+      where: { companyId: 'company-1' },
+    });
+    await service.findAll(root);
+    expect(repo.find).toHaveBeenLastCalledWith({ where: undefined });
+  });
+  it('finds with company scope and rejects missing', async () => {
+    expect(await service.findOne('camera', actor)).toEqual(context);
+    expect(repo.findOneBy).toHaveBeenCalledWith({
+      id: 'camera',
+      companyId: 'company-1',
+    });
+    repo.findOneBy.mockResolvedValue(null);
+    await expect(service.findOne('missing', root)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+  it('updates ordinary fields and validates existing context', async () => {
+    await service.update('camera', { name: 'Renamed' } as never, actor);
+    expect(repo.save).toHaveBeenCalledWith({
+      ...context,
+      name: 'Renamed',
+      updatedById: 'u',
+    });
+    expect(units.findOneBy).toHaveBeenCalledWith({
+      id: 'unit-1',
+      companyId: 'company-1',
     });
   });
-
-  describe('update', () => {
-    it('deve forçar companyId do ator e registrar updatedById', async () => {
-      repository.findOneBy.mockResolvedValue({
-        id: '1',
-        name: 'Portaria 1',
-        companyId: 'company-1',
-      });
-      await service.update('1', { name: 'Portaria 2' } as never, companyActor);
-
-      expect(repository.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: '1',
-          name: 'Portaria 2',
-          companyId: 'company-1',
-          updatedById: 'user-id',
-        }),
-      );
+  it('accepts explicit unchanged unit and point including root edit', async () => {
+    await service.update(
+      'camera',
+      { adminUnityId: 'unit-1', pointId: 'point-1' } as never,
+      root,
+    );
+    expect(repo.save).toHaveBeenCalled();
+    expect(points.findOneBy).toHaveBeenCalledWith({
+      id: 'point-1',
+      companyId: 'company-1',
     });
   });
-
-  describe('remove', () => {
-    it('deve remover a câmera encontrada', async () => {
-      repository.findOneBy.mockResolvedValue({ id: '1' });
-      await service.remove('1', companyActor);
-      expect(repository.remove).toHaveBeenCalledWith({ id: '1' });
-    });
-
-    it('deve lançar 404 ao remover câmera inexistente', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-      await expect(service.remove('1', companyActor)).rejects.toThrow(
-        NotFoundException,
-      );
-    });
+  it.each([{ adminUnityId: 'unit-2' }, { pointId: 'point-2' }])(
+    'rejects reassignment %j',
+    async (update) => {
+      await expect(
+        service.update('camera', update as never, actor),
+      ).rejects.toThrow(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    },
+  );
+  it('rejects edits if stored context is invalid', async () => {
+    units.findOneBy.mockResolvedValue(null);
+    await expect(
+      service.update('camera', { name: 'Rename' } as never, actor),
+    ).rejects.toThrow(BadRequestException);
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('removes found camera and rejects missing', async () => {
+    await service.remove('camera', actor);
+    expect(repo.remove).toHaveBeenCalledWith(context);
+    repo.findOneBy.mockResolvedValue(null);
+    await expect(service.remove('missing', actor)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

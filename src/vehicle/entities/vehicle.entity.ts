@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
+  ForeignKey,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+import { Company } from '../../company/entities/company.entity.js';
 
 const enumVehicleTypes = [
   'own',
@@ -14,6 +17,8 @@ const enumVehicleTypes = [
 ]
 
 @Entity('vehicles')
+@Index('UQ_vehicles_company_plate', ['companyId', 'plate'], { unique: true })
+@Index('UQ_vehicles_company_code', ['companyId', 'code'], { unique: true })
 export class Vehicle {
   @ApiProperty({
     description: 'UUID único do veículo',
@@ -26,14 +31,14 @@ export class Vehicle {
     description: 'Placa do veículo (deve ser única)',
     example: 'ABC1D23',
   })
-  @Column({ unique: true })
+  @Column()
   plate: string;
 
   @ApiProperty({
     description: 'Código identificador do veículo (deve ser único)',
     example: 'VEH-001',
   })
-  @Column({ unique: true })
+  @Column()
   code: string;
 
   @ApiProperty({
@@ -49,7 +54,8 @@ export class Vehicle {
     description: 'ID da empresa vinculada ao veículo',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
+  @ForeignKey(() => Company, { name: 'FK_vehicles_company', onDelete: 'RESTRICT' })
   companyId: string;
 
   @ApiProperty({

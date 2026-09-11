@@ -31,7 +31,7 @@ describe('extractBearerToken', () => {
 describe('getTokenData', () => {
   it('retorna o usuário autenticado da requisição', () => {
     const user = { userId: 'user-1', email: 'a@b.com', role: 'admin', companyId: null };
-    const request = { user } as Request;
+    const request = { user } as unknown as Request;
     expect(getTokenData(request)).toBe(user);
   });
 
