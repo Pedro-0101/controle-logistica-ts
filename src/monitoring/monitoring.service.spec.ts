@@ -8,6 +8,8 @@ import { Point } from '../point/entities/point.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { CameraObservation } from './observation.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
+import { MediaMTXService } from '../camera/mediamtx.service.js';
+import { SnapshotService } from '../camera/snapshot.service.js';
 import type { Actor } from '../auth/company-scope.js';
 import type { CurrentObservation } from './observation.schema.js';
 
@@ -44,6 +46,20 @@ describe('MonitoringService', () => {
     currentObservation: vi.fn(),
     observationImage: vi.fn(),
   };
+  const mediamtxService = {
+    addPath: vi.fn(),
+    removePath: vi.fn(),
+    pathExists: vi.fn(),
+    listPaths: vi.fn(),
+    getStreamUrls: vi.fn(() => ({
+      hlsUrl: 'http://localhost:8888/test/index.m3u8',
+      webrtcUrl: 'http://localhost:8889/test',
+      rtspUrl: 'rtsp://localhost:8554/test',
+    })),
+  };
+  const snapshotService = {
+    capture: vi.fn(),
+  };
   const configService = {
     get: vi.fn(),
   };
@@ -60,6 +76,8 @@ describe('MonitoringService', () => {
         { provide: getRepositoryToken(AdminUnity), useValue: unitsRepo },
         { provide: getRepositoryToken(CameraObservation), useValue: observationsRepo },
         { provide: AnprService, useValue: anprService },
+        { provide: MediaMTXService, useValue: mediamtxService },
+        { provide: SnapshotService, useValue: snapshotService },
         { provide: ConfigService, useValue: configService },
       ],
     }).compile();

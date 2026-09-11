@@ -20,7 +20,7 @@ describe('AnprService', () => {
     password: 'senha',
     authType: 'digest',
     snapshotUrl: null,
-  } as Camera;
+  } as unknown as Camera;
 
   beforeEach(async () => {
     fetchMock = vi.fn();

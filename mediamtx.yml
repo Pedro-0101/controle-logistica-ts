@@ -6,6 +6,13 @@
 #
 # Fonte usada: substream (canal 102, H.264 640x360), compatível com navegadores.
 # O canal 101 (principal) é H.265 e não toca em MSE/WebRTC sem transcodificar.
+#
+# A API REST (porta 9997) é usada pelo backend NestJS para gerenciar paths
+# dinamicamente quando câmeras são cadastradas/atualizadas/removidas.
+
+api: yes
+apiAddress: :9997
+apiAllowOrigin: '*'
 
 rtsp: yes
 rtspAddress: :8554
@@ -24,13 +31,4 @@ webrtcAllowOrigins:
 
 srt: no
 
-paths:
-  camera-entrada:
-    source: rtsp://admin:Cameraip1@192.168.11.241:554/Streaming/Channels/102
-    sourceOnDemand: yes
-    sourceFingerprint: allow
-
-  camera-saida:
-    source: rtsp://admin:Cameraip1@192.168.11.242:554/Streaming/Channels/102
-    sourceOnDemand: yes
-    sourceFingerprint: allow
+paths: {}

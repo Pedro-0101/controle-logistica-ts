@@ -8,6 +8,7 @@ import { CameraService } from './camera.service.js';
 import { Camera } from './entities/camera.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { Point } from '../point/entities/point.entity.js';
+import { MediaMTXService } from './mediamtx.service.js';
 import type { Actor } from '../auth/company-scope.js';
 const actor: Actor = {
   userId: 'u',
@@ -36,11 +37,23 @@ describe('CameraService', () => {
   let repo: ReturnType<typeof mockRepository>;
   let units: ReturnType<typeof mockRepository>;
   let points: ReturnType<typeof mockRepository>;
+  let mediamtx: MediaMTXService;
   let service: CameraService;
   beforeEach(() => {
     repo = mockRepository();
     units = mockRepository();
     points = mockRepository();
+    mediamtx = {
+      addPath: vi.fn(),
+      removePath: vi.fn(),
+      pathExists: vi.fn(),
+      listPaths: vi.fn(),
+      getStreamUrls: vi.fn(() => ({
+        hlsUrl: 'http://localhost:8888/test/index.m3u8',
+        webrtcUrl: 'http://localhost:8889/test',
+        rtspUrl: 'rtsp://localhost:8554/test',
+      })),
+    } as unknown as MediaMTXService;
     repo.findOneBy.mockResolvedValue({ ...context });
     units.findOneBy.mockResolvedValue({
       id: 'unit-1',
@@ -57,6 +70,7 @@ describe('CameraService', () => {
       repo as unknown as Repository<Camera>,
       units as unknown as Repository<AdminUnity>,
       points as unknown as Repository<Point>,
+      mediamtx,
     );
   });
   it('creates with scoped unit and point and stamps actor', async () => {
@@ -118,6 +132,7 @@ describe('CameraService', () => {
     expect(repo.save).toHaveBeenCalled();
   });
   it('lists tenant scoped and root results', async () => {
+    repo.find.mockResolvedValue([]);
     await service.findAll(actor);
     expect(repo.find).toHaveBeenLastCalledWith({
       where: { companyId: 'company-1' },
@@ -126,7 +141,15 @@ describe('CameraService', () => {
     expect(repo.find).toHaveBeenLastCalledWith({ where: undefined });
   });
   it('finds with company scope and rejects missing', async () => {
-    expect(await service.findOne('camera', actor)).toEqual(context);
+    const result = await service.findOne('camera', actor);
+    expect(result).toEqual({
+      ...context,
+      streamUrls: {
+        hlsUrl: 'http://localhost:8888/test/index.m3u8',
+        webrtcUrl: 'http://localhost:8889/test',
+        rtspUrl: 'rtsp://localhost:8554/test',
+      },
+    });
     expect(repo.findOneBy).toHaveBeenCalledWith({
       id: 'camera',
       companyId: 'company-1',

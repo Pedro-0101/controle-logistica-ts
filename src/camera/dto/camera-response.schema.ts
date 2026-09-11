@@ -63,6 +63,22 @@ export const cameraResponseSchema = z
       description: 'Data e hora da última atualização do registro',
       examples: ['2026-08-29T12:00:00.000Z'],
     }),
+    streamUrls: z.object({
+      hlsUrl: z.string().url().meta({
+        description: 'URL do stream HLS (.m3u8). Compatível com todos os navegadores.',
+        examples: ['http://localhost:8888/camera-d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b/index.m3u8'],
+      }),
+      webrtcUrl: z.string().url().meta({
+        description: 'URL do stream WebRTC (WHEP). Baixa latência (~200ms).',
+        examples: ['http://localhost:8889/camera-d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
+      }),
+      rtspUrl: z.string().meta({
+        description: 'URL RTSP direta. Para clientes desktop (VLC, ffplay).',
+        examples: ['rtsp://localhost:8554/camera-d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
+      }),
+    }).meta({
+      description: 'URLs de streaming disponíveis para esta câmera via MediaMTX',
+    }),
   })
   .meta({ id: 'CameraResponseDto' });
 

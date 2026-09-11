@@ -6,6 +6,8 @@ import { Camera } from '../camera/entities/camera.entity.js';
 import { Point } from '../point/entities/point.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
+import { MediaMTXService } from '../camera/mediamtx.service.js';
+import { SnapshotService } from '../camera/snapshot.service.js';
 import { type Actor, resolveCompanyScope, withCompanyScopeWhere } from '../auth/company-scope.js';
 import { CameraObservation } from './observation.entity.js';
 import type { CurrentObservation } from './observation.schema.js';
@@ -24,11 +26,14 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     @InjectRepository(AdminUnity) private readonly units: Repository<AdminUnity>,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
     private readonly anpr: AnprService,
+    private readonly mediamtx: MediaMTXService,
+    private readonly snapshotService: SnapshotService,
     private readonly config: ConfigService,
   ) {}
 
   onApplicationBootstrap() {
     if (this.config.get<string>('MONITORING_ENABLED') === 'false') return;
+    void this.syncMediaMTX();
     void this.reconcile();
     this.timer = setInterval(() => { void this.reconcile(); }, 5000);
     this.timer.unref();
@@ -71,6 +76,44 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     await this.running;
+  }
+
+  private async syncMediaMTX() {
+    try {
+      const cameras = await this.cameras.find();
+      const existingPaths = await this.mediamtx.listPaths();
+
+      // Add paths for cameras that don't have them
+      for (const camera of cameras) {
+        if (this.stopped) return;
+        const pathName = `camera-${camera.id}`;
+        if (!existingPaths.includes(pathName)) {
+          try {
+            await this.mediamtx.addPath(camera);
+            this.logger.log(`Path ${pathName} adicionado ao MediaMTX na inicialização`);
+          } catch (error) {
+            this.logger.warn(`Falha ao adicionar path ${pathName} na inicialização: ${error}`);
+          }
+        }
+      }
+
+      // Remove orphan paths (paths that don't correspond to any camera)
+      const cameraIds = new Set(cameras.map(c => `camera-${c.id}`));
+      for (const pathName of existingPaths) {
+        if (this.stopped) return;
+        if (pathName.startsWith('camera-') && !cameraIds.has(pathName)) {
+          const cameraId = pathName.replace('camera-', '');
+          try {
+            await this.mediamtx.removePath(cameraId);
+            this.logger.log(`Path órfão ${pathName} removido do MediaMTX na inicialização`);
+          } catch (error) {
+            this.logger.warn(`Falha ao remover path órfão ${pathName}: ${error}`);
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Falha ao sincronizar câmeras com MediaMTX: ${error}`);
+    }
   }
 
   private async validContext(camera: Camera): Promise<boolean> {
@@ -142,5 +185,22 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     });
     if (!found?.evidence) throw new NotFoundException('Evidência não encontrada');
     return found.evidence;
+  }
+
+  async snapshot(cameraId: string, actor: Actor): Promise<Buffer> {
+    const camera = await this.cameraInScope(cameraId, actor);
+    return this.snapshotService.capture(camera);
+  }
+
+  async stream(cameraId: string, actor: Actor) {
+    const camera = await this.cameraInScope(cameraId, actor);
+    const exists = await this.mediamtx.pathExists(camera.id);
+    if (!exists) {
+      await this.mediamtx.addPath(camera);
+    }
+    return {
+      cameraId: camera.id,
+      ...this.mediamtx.getStreamUrls(camera.id),
+    };
   }
 }
