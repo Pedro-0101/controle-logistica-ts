@@ -27,6 +27,7 @@ describe('VehicleService', () => {
     find: vi.fn(),
     findOneBy: vi.fn(),
     remove: vi.fn((data: Partial<Vehicle>) => data),
+    upsert: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -100,8 +101,10 @@ describe('VehicleService', () => {
     });
 
     it('deve criar veículo visitante quando a placa não existe', async () => {
-      repository.findOneBy.mockResolvedValue(null);
-      repository.save.mockResolvedValue({ id: 'new-vehicle', plate: 'ABC1234' });
+      repository.findOneBy
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'new-vehicle', plate: 'ABC1234' });
+      repository.upsert.mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] });
 
       const result = await service.findOrCreateByPlate(
         'ABC1234',
@@ -109,15 +112,19 @@ describe('VehicleService', () => {
         companyActor,
       );
 
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(repository.upsert).toHaveBeenCalledWith(
+        {
           plate: 'ABC1234',
           code: 'ABC1234',
           type: 'visitor',
           active: true,
           companyId: 'company-1',
           createdById: 'user-id',
-        }),
+        },
+        {
+          conflictPaths: ['companyId', 'plate'],
+          skipUpdateIfNoValuesChanged: true,
+        },
       );
       expect(result).toEqual({ id: 'new-vehicle', plate: 'ABC1234' });
     });
