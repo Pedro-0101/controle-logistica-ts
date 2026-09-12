@@ -9,9 +9,20 @@ import { AnprService } from '../anpr/anpr.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
 import { MovementService } from '../movement/movement.service.js';
 import { CompanyConfigService } from '../company-config/company-config.service.js';
+import { PointService } from '../point/point.service.js';
 import { Camera } from '../camera/entities/camera.entity.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { CurrentObservation } from '../monitoring/observation.schema.js';
+
+interface ResolvedAnprConfig {
+  anprAutoRegister: boolean;
+  anprSaveUnrecognizedPhotos: boolean;
+  anprAutoRegisterCooldownSeconds: number;
+  anprConfidenceThreshold: number;
+  anprMatchTimeoutSeconds: number;
+  anprConfirmationReads: number;
+  anprStaleAfterSeconds: number;
+}
 
 @Injectable()
 export class AutoRegistrationService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -27,6 +38,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     private readonly vehicleService: VehicleService,
     private readonly movementService: MovementService,
     private readonly companyConfigService: CompanyConfigService,
+    private readonly pointService: PointService,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
     private readonly config: ConfigService,
   ) {}
@@ -75,22 +87,28 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
   private async processObservation(camera: Camera, state: CurrentObservation) {
     const companyId = camera.companyId;
-    const config = await this.companyConfigService.findOne(companyId, {
+    const companyConfig = await this.companyConfigService.findOne(companyId, {
       userId: '', companyId, role: 'admin',
     } as any);
 
-    if (!config.anprAutoRegister) return;
+    const point = await this.pointService.findOne(camera.pointId, {
+      userId: '', companyId, role: 'admin',
+    } as any);
+
+    const resolved = this.resolveAnprConfig(companyConfig, point);
+
+    if (!resolved.anprAutoRegister) return;
 
     const observation = await this.monitoring.ensureObservationPersisted(camera, state);
 
     const existingMovement = await this.movementService.findExistingByObservation(observation.id, companyId);
     if (existingMovement) return;
 
-    if (config.anprAutoRegisterCooldownSeconds > 0) {
+    if (resolved.anprAutoRegisterCooldownSeconds > 0) {
       const vehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
       if (vehicle) {
         const hasRecent = await this.movementService.hasRecentMovement(
-          vehicle.id, camera.pointId, config.anprAutoRegisterCooldownSeconds, companyId,
+          vehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
         );
         if (hasRecent) {
           this.logger.debug(`Cooldown active for vehicle ${vehicle.id} at point ${camera.pointId}`);
@@ -101,7 +119,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
     const vehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
 
-    if (!vehicle && config.anprSaveUnrecognizedPhotos) {
+    if (!vehicle && resolved.anprSaveUnrecognizedPhotos) {
       await this.saveEvidencePhoto(camera, observation, companyId);
     }
 
@@ -119,6 +137,18 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
       `Auto-registered movement: plate=${state.placa!} camera=${camera.id} ` +
       `vehicle=${vehicle ? 'found' : 'NOT FOUND'} → ${vehicle ? 'open' : 'pending_review'}`,
     );
+  }
+
+  private resolveAnprConfig(companyConfig: any, point: any): ResolvedAnprConfig {
+    return {
+      anprAutoRegister: point.anprAutoRegister ?? companyConfig.anprAutoRegister,
+      anprSaveUnrecognizedPhotos: point.anprSaveUnrecognizedPhotos ?? companyConfig.anprSaveUnrecognizedPhotos,
+      anprAutoRegisterCooldownSeconds: point.anprAutoRegisterCooldownSeconds ?? companyConfig.anprAutoRegisterCooldownSeconds,
+      anprConfidenceThreshold: point.anprConfidenceThreshold ?? companyConfig.anprConfidenceThreshold,
+      anprMatchTimeoutSeconds: point.anprMatchTimeoutSeconds ?? companyConfig.anprMatchTimeoutSeconds,
+      anprConfirmationReads: point.anprConfirmationReads ?? companyConfig.anprConfirmationReads,
+      anprStaleAfterSeconds: point.anprStaleAfterSeconds ?? companyConfig.anprStaleAfterSeconds,
+    };
   }
 
   private async saveEvidencePhoto(camera: Camera, observation: CameraObservation, companyId: string) {

@@ -32,11 +32,15 @@ async function bootstrap() {
       'O monitoramento contínuo é feito em background: a cada ~1s, o Python captura a imagem, executa OCR ' +
       'e mantém o estado mais recente. O front consulta periodicamente para exibir ao porteiro.\n\n' +
       'O streaming é sob demanda: o MediaMTX só conecta à câmera quando há espectadores ativos.')
-    .addTag('Movements', 'Entrada e saída de veículos')
+    .addTag('Movements', 'Entrada e saída de veículos. CRUD manual e registro automático via ANPR.')
     .addTag(
       'ANPR',
       'Reconhecimento de placas (ANPR). O OCR é delegado a um microserviço Python (PaddleOCR) que captura o snapshot da câmera IP ou recebe a imagem em base64 e devolve a placa normalizada (Mercosul ou formato antigo).',
     )
+    .addTag('Points', 'Pontos de entrada/saída (portões, cancelheiras). Configure por ponto se o registro automático ANPR está habilitado, timeout de leitura, cooldown e outros parâmetros. Quando um campo está null, herda o valor da configuração da empresa.')
+    .addTag('Company Config', 'Configurações globais da empresa: parâmetros ANPR (confiança, timeout, cooldown), defaults de câmeras, e comportamento de movimentação. Estes valores servem como padrão; cada ponto pode sobrescrever individualmente.')
+    .addTag('Auto Registration', 'Revisão de movimentações registradas automaticamente por ANPR. Quando uma placa não é encontrada na base de dados, o sistema cria um movimento pendente de revisão. O operador corrige a placa ou cadastra o veículo e aciona o recálculo.')
+    .addTag('Monitoring', 'Monitoramento em tempo real de câmeras IP: leitura contínua de placas (polling), captura de snapshots sob demanda, e streaming ao vivo (HLS/WebRTC/RTSP) via MediaMTX.')
     .addBearerAuth()
     .build();
 

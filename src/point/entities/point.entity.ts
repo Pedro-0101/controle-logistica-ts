@@ -68,6 +68,71 @@ export class Point {
   @Column({ default: true })
   active: boolean;
 
+  // ── ANPR / Auto-registration config (overrides CompanyConfig when set) ──
+
+  @ApiProperty({
+    description: 'Habilitar registro automático de movimentação por ANPR neste ponto (null = usar config da empresa)',
+    example: true,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'boolean', nullable: true, default: null })
+  anprAutoRegister: boolean | null;
+
+  @ApiProperty({
+    description: 'Salvar foto quando placa não reconhecida neste ponto (null = usar config da empresa)',
+    example: true,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'boolean', nullable: true, default: null })
+  anprSaveUnrecognizedPhotos: boolean | null;
+
+  @ApiProperty({
+    description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo neste ponto (null = usar config da empresa)',
+    example: 30,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'int', nullable: true, default: null })
+  anprAutoRegisterCooldownSeconds: number | null;
+
+  @ApiProperty({
+    description: 'Confiança mínima para reconhecimento ANPR neste ponto (null = usar config da empresa)',
+    example: 0.85,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true, default: null })
+  anprConfidenceThreshold: number | null;
+
+  @ApiProperty({
+    description: 'Timeout para match de placa em segundos neste ponto (null = usar config da empresa)',
+    example: 5,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'int', nullable: true, default: null })
+  anprMatchTimeoutSeconds: number | null;
+
+  @ApiProperty({
+    description: 'Número de leituras para confirmar placa neste ponto (null = usar config da empresa)',
+    example: 2,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'int', nullable: true, default: null })
+  anprConfirmationReads: number | null;
+
+  @ApiProperty({
+    description: 'Tempo para considerar observação stale em segundos neste ponto (null = usar config da empresa)',
+    example: 5,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'int', nullable: true, default: null })
+  anprStaleAfterSeconds: number | null;
+
   @ApiProperty({
     description: 'ID do usuário que criou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
