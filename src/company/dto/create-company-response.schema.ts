@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
 import { createCompanySchema } from './create-company.schema.js';
+import { companyConfigResponseSchema } from '../../company-config/dto/company-config-response.schema.js';
 
 export const companyAdminResponseSchema = z
   .object({
@@ -40,6 +41,7 @@ export const createCompanyResponseSchema = z
   .object({
     company: createCompanySchema.omit({ admin: true }),
     admin: companyAdminResponseSchema,
+    config: companyConfigResponseSchema,
   })
   .meta({ id: 'CreateCompanyResponseDto' });
 

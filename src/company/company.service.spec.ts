@@ -6,6 +6,7 @@ import { CompanyService } from './company.service.js';
 import { Company } from './entities/company.entity.js';
 import { User } from '../user/entities/user.entity.js';
 import { UserService } from '../user/user.service.js';
+import { CompanyConfigService } from '../company-config/company-config.service.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const rootActor: Actor = {
@@ -58,6 +59,9 @@ describe('CompanyService', () => {
   const userService = {
     hashPassword: vi.fn(async () => 'hashed-password'),
   };
+  const configService = {
+    createWithDefaults: vi.fn(async () => ({ id: 'config-1', companyId: 'new-id' })),
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -76,6 +80,10 @@ describe('CompanyService', () => {
         {
           provide: UserService,
           useValue: userService,
+        },
+        {
+          provide: CompanyConfigService,
+          useValue: configService,
         },
       ],
     }).compile();
@@ -110,7 +118,7 @@ describe('CompanyService', () => {
       );
     });
 
-    it('root cria empresa e admin na mesma transação', async () => {
+    it('root cria empresa, admin e config na mesma transação', async () => {
       const result = await service.create(createDto, rootActor);
 
       expect(dataSource.transaction).toHaveBeenCalledTimes(1);
@@ -126,11 +134,19 @@ describe('CompanyService', () => {
           email: 'joao@x.com',
         }),
       );
+      expect(manager.create).toHaveBeenCalledWith(
+        'CompanyConfig',
+        expect.objectContaining({
+          companyId: 'new-id',
+          createdById: 'root-id',
+        }),
+      );
       expect(userService.hashPassword).toHaveBeenCalledWith('senha123');
-      expect(manager.save).toHaveBeenCalledTimes(2);
+      expect(manager.save).toHaveBeenCalledTimes(3);
       expect(result.company).toMatchObject({ name: 'X', id: 'new-id' });
       expect(result.admin).toMatchObject({ role: 'admin', companyId: 'new-id' });
       expect(result.admin).not.toHaveProperty('password');
+      expect(result.config).toMatchObject({ companyId: 'new-id' });
     });
   });
 

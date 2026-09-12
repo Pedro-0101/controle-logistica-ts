@@ -1,0 +1,87 @@
+import { z } from 'zod';
+import { createZodDto } from 'zod-nest';
+
+export const companyConfigResponseSchema = z
+  .object({
+    id: z.string().meta({
+      description: 'UUID único da configuração',
+      examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
+    }),
+    companyId: z.string().meta({
+      description: 'ID da empresa vinculada à configuração',
+      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    }),
+    timezone: z.string().meta({
+      description: 'Fuso horário da empresa',
+      examples: ['America/Sao_Paulo'],
+    }),
+    language: z.string().meta({
+      description: 'Idioma do sistema',
+      examples: ['pt-BR'],
+    }),
+    cameraDefaultProtocol: z.enum(['http', 'https']).meta({
+      description: 'Protocolo padrão para câmeras',
+      examples: ['http'],
+    }),
+    cameraDefaultPort: z.number().int().meta({
+      description: 'Porta padrão para câmeras',
+      examples: [80],
+    }),
+    cameraDefaultAuthType: z.enum(['digest', 'basic']).meta({
+      description: 'Tipo de autenticação padrão para câmeras',
+      examples: ['digest'],
+    }),
+    cameraSnapshotIntervalMs: z.number().int().meta({
+      description: 'Intervalo de snapshot das câmeras em milissegundos',
+      examples: [1000],
+    }),
+    anprConfidenceThreshold: z.number().meta({
+      description: 'Confiança mínima para reconhecimento ANPR (0-1)',
+      examples: [0.85],
+    }),
+    anprMatchTimeoutSeconds: z.number().int().meta({
+      description: 'Timeout para match de placa em segundos',
+      examples: [5],
+    }),
+    anprConfirmationReads: z.number().int().meta({
+      description: 'Número de leituras para confirmar placa',
+      examples: [2],
+    }),
+    anprStaleAfterSeconds: z.number().int().meta({
+      description: 'Tempo para considerar observação stale em segundos',
+      examples: [5],
+    }),
+    movementAutoCloseMinutes: z.number().int().meta({
+      description: 'Minutos para auto-fechar movimento',
+      examples: [60],
+    }),
+    requireDriverName: z.boolean().meta({
+      description: 'Exigir nome do motorista na movimentação',
+      examples: [false],
+    }),
+    requirePurpose: z.boolean().meta({
+      description: 'Exigir motivo na movimentação',
+      examples: [false],
+    }),
+    createdById: z.string().meta({
+      description: 'ID do usuário que criou o registro',
+      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    }),
+    updatedById: z.string().nullish().meta({
+      description: 'ID do último usuário que atualizou o registro',
+      examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+    }),
+    createdAt: z.iso.datetime().meta({
+      description: 'Data e hora da criação do registro',
+      examples: ['2026-08-29T12:00:00.000Z'],
+    }),
+    updatedAt: z.iso.datetime().meta({
+      description: 'Data e hora da última atualização do registro',
+      examples: ['2026-08-29T12:00:00.000Z'],
+    }),
+  })
+  .meta({ id: 'CompanyConfigResponseDto' });
+
+export class CompanyConfigResponseDto extends createZodDto(companyConfigResponseSchema) {}
+
+export type CompanyConfigResponseDtoType = z.infer<typeof companyConfigResponseSchema>;

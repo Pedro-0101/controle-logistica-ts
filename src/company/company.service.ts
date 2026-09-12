@@ -11,6 +11,7 @@ import { Company } from './entities/company.entity.js';
 import { User } from '../user/entities/user.entity.js';
 import { UserService } from '../user/user.service.js';
 import { type Actor, resolveCompanyScope } from '../auth/company-scope.js';
+import { CompanyConfigService } from '../company-config/company-config.service.js';
 
 @Injectable()
 export class CompanyService {
@@ -18,6 +19,7 @@ export class CompanyService {
     @InjectRepository(Company)
     private readonly companyRepository: Repository<Company>,
     private readonly userService: UserService,
+    private readonly configService: CompanyConfigService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -50,8 +52,15 @@ export class CompanyService {
         }),
       );
 
+      const config = await manager.save(
+        manager.create('CompanyConfig', {
+          companyId: company.id,
+          createdById: actor.userId,
+        }),
+      );
+
       const { password: _password, ...safeAdmin } = adminUser;
-      return { company, admin: safeAdmin };
+      return { company, admin: safeAdmin, config };
     });
   }
 
