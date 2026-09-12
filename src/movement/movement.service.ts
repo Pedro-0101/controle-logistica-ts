@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
@@ -62,7 +62,9 @@ export class MovementService {
       const repository = manager.getRepository(Movement);
       const existing = await repository.findOneBy({ observationId: observation.id, companyId });
       if (existing) {
-        const vehicle = await manager.getRepository(Vehicle).findOneByOrFail({ id: existing.vehicleId, companyId });
+        const vehicle = existing.vehicleId
+          ? await manager.getRepository(Vehicle).findOneByOrFail({ id: existing.vehicleId, companyId })
+          : null;
         return { movement: existing, vehicle };
       }
       if (observation.expiresAt.getTime() <= Date.now()) throw new ConflictException('Observação expirada; consulte novamente');
@@ -139,7 +141,112 @@ export class MovementService {
     return this.movementRepository.remove(movement);
   }
 
-  private async validateReferences(vehicleId: string, pointId: string | undefined, type: string, actor: Actor) {
+  async findPendingReview(actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    return this.movementRepository.find({
+      where: {
+        ...companyScopeFilter<Movement>(scope),
+        status: 'pending_review',
+      },
+      order: { dateTime: 'DESC' },
+    });
+  }
+
+  async recalculate(id: string, dto: { plate?: string; vehicleId?: string }, actor: Actor) {
+    const companyId = requireCompanyId(actor);
+    return this.dataSource.transaction(async (manager) => {
+      const movement = await manager.getRepository(Movement).findOne({
+        where: { id, companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!movement) throw new NotFoundException('Movimento não encontrado');
+      if (movement.status !== 'pending_review') {
+        throw new ConflictException('Apenas movimentos pendentes de revisão podem ser recalculados');
+      }
+
+      let vehicle: Vehicle;
+      if (dto.vehicleId) {
+        vehicle = await this.vehicleService.findOne(dto.vehicleId, actor);
+      } else if (dto.plate) {
+        const found = await this.vehicleService.findByPlate(dto.plate, companyId);
+        if (!found) {
+          throw new NotFoundException(`Veículo com placa ${dto.plate} não encontrado na base de dados`);
+        }
+        vehicle = found;
+      } else {
+        throw new BadRequestException('Informe a placa ou o ID do veículo para recálculo');
+      }
+
+      if (!vehicle.active) throw new BadRequestException('Veículo informado está inativo');
+
+      movement.vehicleId = vehicle.id;
+      movement.status = 'open';
+      movement.recognizedPlate = null;
+      movement.recalculatedAt = new Date();
+      movement.updatedById = actor.userId;
+      return manager.getRepository(Movement).save(movement);
+    });
+  }
+
+  async createAutoRegistered(params: {
+    observation: CameraObservation;
+    vehicle: Vehicle | null;
+    recognizedPlate: string;
+    companyId: string;
+    systemUserId: string;
+  }): Promise<Movement> {
+    const { observation, vehicle, recognizedPlate, companyId, systemUserId } = params;
+
+    return this.dataSource.transaction(async (manager) => {
+      const existing = await manager.getRepository(Movement).findOneBy({ observationId: observation.id, companyId });
+      if (existing) return existing;
+
+      const point = await this.pointService.findOne(observation.pointId, { userId: systemUserId, companyId, role: 'admin' } as Actor);
+      if (!point.active) throw new BadRequestException('Ponto inativo');
+
+      const type = this.resolveMovementType(point.type, point.type === 'both' ? 'entry' as const : undefined);
+
+      const movement = manager.getRepository(Movement).create({
+        observationId: observation.id,
+        pointId: observation.pointId,
+        vehicleId: vehicle?.id ?? null,
+        type,
+        dateTime: observation.capturedAt,
+        status: vehicle ? 'open' : 'pending_review',
+        recognizedPlate,
+        autoRegistered: true,
+        companyId,
+        createdById: systemUserId,
+      });
+
+      return manager.getRepository(Movement).save(movement);
+    });
+  }
+
+  async hasRecentMovement(vehicleId: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
+    const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
+    const count = await this.movementRepository.count({
+      where: {
+        vehicleId,
+        pointId,
+        companyId,
+        dateTime: MoreThanOrEqual(cutoff),
+      },
+    });
+    return count > 0;
+  }
+
+  async findExistingByObservation(observationId: string, companyId: string): Promise<Movement | null> {
+    return this.movementRepository.findOneBy({ observationId, companyId });
+  }
+
+  async findObservationPhotoPath(observationId: string): Promise<{ photoPath: string | null } | null> {
+    const obs = await this.dataSource.getRepository(CameraObservation).findOneBy({ id: observationId });
+    return obs ? { photoPath: obs.photoPath } : null;
+  }
+
+  private async validateReferences(vehicleId: string | null, pointId: string | undefined, type: string, actor: Actor) {
+    if (!vehicleId) throw new BadRequestException('Veículo é obrigatório');
     const vehicle = await this.vehicleService.findOne(vehicleId, actor);
     if (!vehicle.active) throw new BadRequestException('Veículo inativo');
     if (pointId) {

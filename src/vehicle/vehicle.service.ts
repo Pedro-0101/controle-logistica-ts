@@ -37,6 +37,11 @@ export class VehicleService {
     });
   }
 
+  async findByPlate(plate: string, companyId: string): Promise<Vehicle | null> {
+    plate = normalizePlate(plate);
+    return this.vehicleRepository.findOneBy({ plate, companyId });
+  }
+
   async findOrCreateByPlate(plate: string, companyId: string, actor: Actor, manager?: EntityManager) {
     if (!companyId || (actor.companyId && actor.companyId !== companyId)) {
       throw new ForbiddenException('Veículo deve pertencer à empresa da operação');

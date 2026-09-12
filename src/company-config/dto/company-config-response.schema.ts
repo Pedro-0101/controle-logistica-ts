@@ -51,6 +51,18 @@ export const companyConfigResponseSchema = z
       description: 'Tempo para considerar observação stale em segundos',
       examples: [5],
     }),
+    anprAutoRegister: z.boolean().meta({
+      description: 'Habilitar registro automático de movimentação por ANPR. Quando true, o sistema cria movimentos automaticamente ao detectar placas confirmadas, sem intervenção do porteiro.',
+      examples: [false],
+    }),
+    anprSaveUnrecognizedPhotos: z.boolean().meta({
+      description: 'Salvar foto quando placa não é reconhecida na base de dados. A foto fica disponível no campo photoPath do movimento pending_review.',
+      examples: [true],
+    }),
+    anprAutoRegisterCooldownSeconds: z.number().int().meta({
+      description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo no mesmo ponto. Evita registros duplicados.',
+      examples: [30],
+    }),
     movementAutoCloseMinutes: z.number().int().meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],

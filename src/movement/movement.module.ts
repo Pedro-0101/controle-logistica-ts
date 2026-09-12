@@ -20,6 +20,6 @@ import { MonitoringModule } from '../monitoring/monitoring.module.js';
   ],
   controllers: [MovementController],
   providers: [MovementService],
-  exports: [TypeOrmModule],
+  exports: [TypeOrmModule, MovementService],
 })
 export class MovementModule {}

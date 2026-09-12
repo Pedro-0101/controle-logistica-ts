@@ -53,6 +53,21 @@ export const createCompanyConfigSchema = z
       examples: [5],
       default: 5,
     }),
+    anprAutoRegister: z.boolean().default(false).meta({
+      description: 'Habilitar registro automático de movimentação por ANPR. Quando true, o sistema cria movimentos automaticamente ao detectar placas confirmadas pelas câmeras, sem intervenção do porteiro. Placas não reconhecidas ficam com status pending_review.',
+      examples: [false],
+      default: false,
+    }),
+    anprSaveUnrecognizedPhotos: z.boolean().default(true).meta({
+      description: 'Salvar foto quando placa não é reconhecida na base de dados. A foto fica disponível no campo photoPath do movimento pending_review e pode ser exibida ao operador para validação visual.',
+      examples: [true],
+      default: true,
+    }),
+    anprAutoRegisterCooldownSeconds: z.number().int().default(30).meta({
+      description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo no mesmo ponto. Evita registros duplicados quando um caminhão passa lentamente pela câmera.',
+      examples: [30],
+      default: 30,
+    }),
     movementAutoCloseMinutes: z.number().int().default(60).meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],

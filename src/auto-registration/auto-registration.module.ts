@@ -1,0 +1,27 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AutoRegistrationService } from './auto-registration.service.js';
+import { AutoRegistrationController } from './auto-registration.controller.js';
+import { CameraObservation } from '../monitoring/observation.entity.js';
+import { MonitoringModule } from '../monitoring/monitoring.module.js';
+import { AnprModule } from '../anpr/anpr.module.js';
+import { VehicleModule } from '../vehicle/vehicle.module.js';
+import { PointModule } from '../point/point.module.js';
+import { CompanyConfigModule } from '../company-config/company-config.module.js';
+import { MovementModule } from '../movement/movement.module.js';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([CameraObservation]),
+    MonitoringModule,
+    AnprModule,
+    VehicleModule,
+    PointModule,
+    CompanyConfigModule,
+    MovementModule,
+  ],
+  controllers: [AutoRegistrationController],
+  providers: [AutoRegistrationService],
+  exports: [AutoRegistrationService],
+})
+export class AutoRegistrationModule {}

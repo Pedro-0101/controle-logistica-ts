@@ -119,6 +119,30 @@ export class CompanyConfig {
   @Column({ default: 5 })
   anprStaleAfterSeconds: number;
 
+  @ApiProperty({
+    description: 'Habilitar registro automático de movimentação por ANPR',
+    example: false,
+    default: false,
+  })
+  @Column({ default: false })
+  anprAutoRegister: boolean;
+
+  @ApiProperty({
+    description: 'Salvar foto quando placa não é reconhecida na base de dados',
+    example: true,
+    default: true,
+  })
+  @Column({ default: true })
+  anprSaveUnrecognizedPhotos: boolean;
+
+  @ApiProperty({
+    description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo no mesmo ponto',
+    example: 30,
+    default: 30,
+  })
+  @Column({ default: 30 })
+  anprAutoRegisterCooldownSeconds: number;
+
   // ── Movimentação ──
 
   @ApiProperty({

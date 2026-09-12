@@ -182,6 +182,39 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     return this.snapshotService.capture(camera);
   }
 
+  async getConfirmedObservations(): Promise<Array<{ camera: Camera; observation: CurrentObservation }>> {
+    const cameras = await this.cameras.find();
+    const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
+    for (const camera of cameras) {
+      try {
+        const state = await this.anpr.currentObservation(camera.id);
+        if (state.status === 'confirmed' && state.observationId && state.placa && this.fresh(state)) {
+          results.push({ camera, observation: state });
+        }
+      } catch {
+        // skip cameras that are offline or returning errors
+      }
+    }
+    return results;
+  }
+
+  async ensureObservationPersisted(camera: Camera, state: CurrentObservation): Promise<CameraObservation> {
+    if (!state.observationId || !state.placa) {
+      throw new BadRequestException('Observação incompleta');
+    }
+    let saved = await this.observations.findOneBy({ id: state.observationId });
+    if (!saved) {
+      await this.observations.createQueryBuilder().insert().values({
+        id: state.observationId, cameraId: camera.id, pointId: camera.pointId, companyId: camera.companyId,
+        plate: state.placa, confidence: state.confianca!,
+        capturedAt: new Date(state.capturedAt!), lastSeenAt: new Date(state.lastSeenAt!),
+        expiresAt: new Date(state.expiresAt!),
+      }).orIgnore().execute();
+      saved = await this.observations.findOneByOrFail({ id: state.observationId });
+    }
+    return saved;
+  }
+
   async stream(cameraId: string, actor: Actor) {
     const camera = await this.cameraInScope(cameraId, actor);
     const exists = await this.mediamtx.pathExists(camera.id);

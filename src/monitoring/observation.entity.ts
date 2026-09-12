@@ -14,5 +14,6 @@ export class CameraObservation {
   @Column('timestamptz') capturedAt: Date;
   @Column('timestamptz') lastSeenAt: Date;
   @Column('timestamptz') expiresAt: Date;
+  @Column({ nullable: true }) photoPath: string;
 
 }

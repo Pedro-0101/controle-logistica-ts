@@ -35,7 +35,16 @@ export class CompanyConfigController {
   @Patch(':companyId')
   @ApiOperation({
     summary: 'Atualizar configuração da empresa',
-    description: 'Atualiza parcialmente as configurações da empresa existente.',
+    description:
+      'Atualiza parcialmente as configurações da empresa existente.\n\n' +
+      '**Configurações de Auto Registration (ANPR):**\n' +
+      '- `anprAutoRegister`: Ativa/desativa o registro automático de movimentação\n' +
+      '- `anprSaveUnrecognizedPhotos`: Ativa/desativa o salvamento de fotos para placas não reconhecidas\n' +
+      '- `anprAutoRegisterCooldownSeconds`: Intervalo mínimo entre registros automáticos do mesmo veículo\n\n' +
+      '**Exemplo para ativar auto-registration:**\n' +
+      '```json\n' +
+      '{ "anprAutoRegister": true, "anprSaveUnrecognizedPhotos": true }\n' +
+      '```',
   })
   @ApiParam({
     name: 'companyId',

@@ -14,7 +14,7 @@ import { Vehicle } from '../../vehicle/entities/vehicle.entity.js';
 import { Company } from '../../company/entities/company.entity.js';
 
 const enumMovementTypes = ['entry', 'exit'];
-const enumMovementStatus = ['open', 'closed'];
+const enumMovementStatus = ['open', 'closed', 'pending_review'];
 
 @Entity('movements')
 @Index('UQ_movements_observation', ['observationId'], { unique: true })
@@ -39,12 +39,13 @@ export class Movement {
   pointId: string;
 
   @ApiProperty({
-    description: 'ID do veículo vinculado ao movimento',
+    description: 'ID do veículo vinculado ao movimento (nulo quando pending_review)',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    required: false,
   })
-  @Column('uuid')
+  @Column('uuid', { nullable: true })
   @ForeignKey(() => Vehicle, { name: 'FK_movements_vehicle', onDelete: 'RESTRICT' })
-  vehicleId: string;
+  vehicleId: string | null;
 
   @ApiProperty({
     description: 'Tipo do movimento (entrada ou saída)',
@@ -108,6 +109,30 @@ export class Movement {
   })
   @Column()
   createdById: string;
+
+  @ApiProperty({
+    description: 'Placa reconhecida pelo OCR (pode diferir do veículo se houve correção)',
+    example: 'ABC1D23',
+    required: false,
+  })
+  @Column({ nullable: true })
+  recognizedPlate: string | null;
+
+  @ApiProperty({
+    description: 'Se o movimento foi criado automaticamente pelo sistema ANPR',
+    example: false,
+    default: false,
+  })
+  @Column({ default: false })
+  autoRegistered: boolean;
+
+  @ApiProperty({
+    description: 'Data e hora do último recálculo do movimento',
+    example: '2026-08-29T12:00:00.000Z',
+    required: false,
+  })
+  @Column({ type: 'timestamptz', nullable: true })
+  recalculatedAt: Date;
 
   @ApiProperty({
     description: 'ID do último usuário que atualizou o registro',
