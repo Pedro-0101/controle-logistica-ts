@@ -20,19 +20,53 @@ export class MediaMTXService {
   private readonly apiBase: string;
   private readonly hlsBase: string;
   private readonly webrtcBase: string;
+  private readonly apiAuth: string | undefined;
 
   constructor(config: ConfigService) {
     this.apiBase = (config.get<string>('MEDIAMTX_API_URL') ?? 'http://localhost:9997').replace(/\/+$/, '');
     this.hlsBase = (config.get<string>('MEDIAMTX_HLS_URL') ?? 'http://localhost:8888').replace(/\/+$/, '');
     this.webrtcBase = (config.get<string>('MEDIAMTX_WEBRTC_URL') ?? 'http://localhost:8889').replace(/\/+$/, '');
+
+    const apiUser = config.get<string>('MEDIAMTX_API_USER');
+    const apiPassword = config.get<string>('MEDIAMTX_API_PASSWORD');
+    if (apiUser && apiPassword) {
+      this.apiAuth = 'Basic ' + Buffer.from(`${apiUser}:${apiPassword}`).toString('base64');
+    }
+  }
+
+  private apiHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.apiAuth) {
+      headers['Authorization'] = this.apiAuth;
+    }
+    return headers;
   }
 
   private buildRtspSource(camera: Camera): string {
     const auth = camera.username ? `${camera.username}:${camera.password}@` : '';
-    const port = camera.port === 554 ? '' : `:${camera.port}`;
-    const channel = camera.snapshotUrl ?? '/Streaming/Channels/102';
-    const path = channel.startsWith('/') ? channel : `/${channel}`;
-    return `rtsp://${auth}${camera.ip}${port}${path}`;
+    const path = this.resolveRtspPath(camera.snapshotUrl);
+    return `rtsp://${auth}${camera.ip}:554${path}`;
+  }
+
+  private resolveRtspPath(snapshotUrl: string | null): string {
+    if (!snapshotUrl) return '/Streaming/Channels/102';
+
+    let pathname: string;
+    try {
+      pathname = new URL(snapshotUrl).pathname;
+    } catch {
+      pathname = snapshotUrl;
+    }
+
+    if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+
+    const isapiMatch = pathname.match(/\/ISAPI\/Streaming\/channels\/(\d+)/i);
+    if (isapiMatch) return `/Streaming/Channels/${isapiMatch[1]}`;
+
+    const channelMatch = pathname.match(/\/Streaming\/Channels\/(\d+)/i);
+    if (channelMatch) return `/Streaming/Channels/${channelMatch[1]}`;
+
+    return '/Streaming/Channels/102';
   }
 
   private buildPathName(cameraId: string): string {
@@ -48,15 +82,30 @@ export class MediaMTXService {
     };
 
     try {
-      const response = await fetch(`${this.apiBase}/v3/config/paths/add/${encodeURIComponent(pathName)}`, {
+      let response = await fetch(`${this.apiBase}/v3/config/paths/add/${encodeURIComponent(pathName)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.apiHeaders(),
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
         const text = await response.text();
-        this.logger.warn(`MediaMTX addPath falhou (${response.status}): ${text}`);
+        if (response.status === 400 && text.includes('already exists')) {
+          await this.removePath(camera.id);
+          response = await fetch(`${this.apiBase}/v3/config/paths/add/${encodeURIComponent(pathName)}`, {
+            method: 'POST',
+            headers: this.apiHeaders(),
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) {
+            const retryText = await response.text();
+            this.logger.warn(`MediaMTX addPath após recriação falhou (${response.status}): ${retryText}`);
+          } else {
+            this.logger.log(`Path ${pathName} recriado no MediaMTX com sucesso`);
+          }
+        } else {
+          this.logger.warn(`MediaMTX addPath falhou (${response.status}): ${text}`);
+        }
       } else {
         this.logger.log(`Path ${pathName} adicionado ao MediaMTX`);
       }
@@ -71,6 +120,7 @@ export class MediaMTXService {
     try {
       const response = await fetch(`${this.apiBase}/v3/config/paths/delete/${encodeURIComponent(pathName)}`, {
         method: 'DELETE',
+        headers: this.apiHeaders(),
       });
 
       if (!response.ok && response.status !== 404) {
@@ -90,6 +140,7 @@ export class MediaMTXService {
     try {
       const response = await fetch(`${this.apiBase}/v3/config/paths/list`, {
         method: 'GET',
+        headers: this.apiHeaders(),
       });
 
       if (!response.ok) return false;
@@ -104,6 +155,7 @@ export class MediaMTXService {
     try {
       const response = await fetch(`${this.apiBase}/v3/config/paths/list`, {
         method: 'GET',
+        headers: this.apiHeaders(),
       });
 
       if (!response.ok) return [];

@@ -12,7 +12,21 @@
 
 api: yes
 apiAddress: :9997
-apiAllowOrigin: '*'
+apiAllowOrigins:
+  - '*'
+
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1", "0.0.0.0/0", "::/0"]
+    permissions:
+      - action: api
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
 
 rtsp: yes
 rtspAddress: :8554
