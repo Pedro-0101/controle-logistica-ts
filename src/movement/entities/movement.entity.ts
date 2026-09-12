@@ -115,7 +115,7 @@ export class Movement {
     example: 'ABC1D23',
     required: false,
   })
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   recognizedPlate: string | null;
 
   @ApiProperty({
