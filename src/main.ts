@@ -23,13 +23,12 @@ async function bootstrap() {
     .addTag('Companies', 'Gestão de empresas')
     .addTag('Admin Units', 'Unidades administrativas')
     .addTag('Vehicles', 'Veículos')
-    .addTag('Cameras', 'Câmeras IP, monitoramento contínuo de placas, evidências fotográficas e streaming ao vivo. ' +
+    .addTag('Cameras', 'Câmeras IP, monitoramento contínuo de placas e streaming ao vivo. ' +
       'Endpoints disponíveis:\n' +
       '- CRUD de câmeras (POST, GET, PATCH, DELETE)\n' +
       '- GET /camera/:id/current-observation: Monitoramento contínuo OCR (polling a cada 2s)\n' +
       '- GET /camera/:id/snapshot: Captura sob demanda de imagem JPEG da câmera\n' +
-      '- GET /camera/:id/stream: URLs de streaming HLS/WebRTC/RTSP via MediaMTX\n' +
-      '- GET /camera/:id/observations/:observationId/image: Evidência fotográfica de observação\n\n' +
+      '- GET /camera/:id/stream: URLs de streaming HLS/WebRTC/RTSP via MediaMTX\n\n' +
       'O monitoramento contínuo é feito em background: a cada ~1s, o Python captura a imagem, executa OCR ' +
       'e mantém o estado mais recente. O front consulta periodicamente para exibir ao porteiro.\n\n' +
       'O streaming é sob demanda: o MediaMTX só conecta à câmera quando há espectadores ativos.')

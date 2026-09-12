@@ -138,13 +138,12 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     if (!this.fresh(state)) return { ...state, status: 'stale', placa: null, observationId: null };
     let saved = await this.observations.findOneBy({ id: state.observationId! });
     if (!saved) {
-      const evidence = await this.anpr.observationImage(cameraId, state.observationId!);
       if (!this.fresh(state)) throw new ConflictException('Observação expirou; consulte novamente');
       await this.observations.createQueryBuilder().insert().values({
         id: state.observationId!, cameraId, pointId: camera.pointId, companyId: camera.companyId,
         plate: state.placa!, confidence: state.confianca!,
         capturedAt: new Date(state.capturedAt!), lastSeenAt: new Date(state.lastSeenAt!),
-        expiresAt: new Date(state.expiresAt!), evidence,
+        expiresAt: new Date(state.expiresAt!),
       }).orIgnore().execute();
       saved = await this.observations.findOneByOrFail({ id: state.observationId! });
     }
@@ -176,16 +175,7 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     }
   }
 
-  async image(cameraId: string, observationId: string, actor: Actor): Promise<Buffer> {
-    // Historical evidence remains accessible for audit even if the unit becomes inactive.
-    const scope = resolveCompanyScope(actor);
-    const found = await this.observations.findOne({
-      where: withCompanyScopeWhere<CameraObservation>({ id: observationId, cameraId }, scope),
-      select: { id: true, evidence: true },
-    });
-    if (!found?.evidence) throw new NotFoundException('Evidência não encontrada');
-    return found.evidence;
-  }
+
 
   async snapshot(cameraId: string, actor: Actor): Promise<Buffer> {
     const camera = await this.cameraInScope(cameraId, actor);

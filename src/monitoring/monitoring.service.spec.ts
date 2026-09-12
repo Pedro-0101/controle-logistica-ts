@@ -44,7 +44,6 @@ describe('MonitoringService', () => {
     deleteMonitor: vi.fn(),
     listMonitors: vi.fn(),
     currentObservation: vi.fn(),
-    observationImage: vi.fn(),
   };
   const mediamtxService = {
     addPath: vi.fn(),
@@ -332,9 +331,8 @@ describe('MonitoringService', () => {
       expect(observationsRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
-    it('deve persistir evidência na primeira consulta confirmed', async () => {
+    it('deve persistir observação na primeira consulta confirmed', async () => {
       anprService.currentObservation.mockResolvedValue(confirmedState);
-      anprService.observationImage.mockResolvedValue(Buffer.from('jpeg-data'));
       observationsRepo.findOneBy.mockResolvedValue(null);
       const insertExecute = vi.fn().mockResolvedValue(undefined);
       const insertMock = {
@@ -362,12 +360,11 @@ describe('MonitoringService', () => {
 
       await service.current('cam-1', companyActor);
 
-      expect(anprService.observationImage).toHaveBeenCalledWith('cam-1', 'obs-1');
       expect(insertExecute).toHaveBeenCalled();
       expect(updateExecute).toHaveBeenCalled();
     });
 
-    it('não deve buscar evidência duas vezes para a mesma observação', async () => {
+    it('não deve criar observação duas vezes para a mesma observação', async () => {
       anprService.currentObservation.mockResolvedValue(confirmedState);
       observationsRepo.findOneBy.mockResolvedValue({ id: 'obs-1', cameraId: 'cam-1', companyId: 'company-1', plate: 'ABC1D23', pointId: 'point-1' });
       const updateMock = { update: vi.fn().mockReturnThis(), set: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), execute: vi.fn().mockResolvedValue(undefined) };
@@ -375,7 +372,7 @@ describe('MonitoringService', () => {
 
       await service.current('cam-1', companyActor);
 
-      expect(anprService.observationImage).not.toHaveBeenCalled();
+      expect(observationsRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
     });
 
     it('deve marcar como stale quando observação expirou', async () => {
@@ -447,28 +444,7 @@ describe('MonitoringService', () => {
     });
   });
 
-  describe('image', () => {
-    it('deve retornar evidência quando encontrada', async () => {
-      const evidence = Buffer.from('jpeg-data');
-      observationsRepo.findOne.mockResolvedValue({ id: 'obs-1', evidence });
 
-      const result = await service.image('cam-1', 'obs-1', companyActor);
-
-      expect(result).toBe(evidence);
-    });
-
-    it('deve lançar 404 quando evidência não existe', async () => {
-      observationsRepo.findOne.mockResolvedValue(null);
-
-      await expect(service.image('cam-1', 'obs-1', companyActor)).rejects.toThrow(NotFoundException);
-    });
-
-    it('deve lançar 404 quando evidência é null', async () => {
-      observationsRepo.findOne.mockResolvedValue({ id: 'obs-1', evidence: null });
-
-      await expect(service.image('cam-1', 'obs-1', companyActor)).rejects.toThrow(NotFoundException);
-    });
-  });
 
   describe('onModuleDestroy', () => {
     it('deve marcar como stopped e ignorar reconcile', async () => {

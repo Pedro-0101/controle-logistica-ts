@@ -14,5 +14,5 @@ export class CameraObservation {
   @Column('timestamptz') capturedAt: Date;
   @Column('timestamptz') lastSeenAt: Date;
   @Column('timestamptz') expiresAt: Date;
-  @Column('bytea', { nullable: true, select: false }) evidence: Buffer | null;
+
 }
