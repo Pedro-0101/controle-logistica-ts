@@ -58,19 +58,23 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       if (await this.validContext(camera)) {
         desired.add(camera.id);
         try {
-          const [companyConfig, point] = await Promise.all([
-            this.companyConfigService.findOne(camera.companyId, {
+          let companyConfig: import('../company-config/entities/company-config.entity.js').CompanyConfig | null = null;
+          try {
+            companyConfig = await this.companyConfigService.findOne(camera.companyId, {
               userId: '', companyId: camera.companyId, role: 'admin',
-            } as any),
-            this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId }),
-          ]);
+            } as any);
+          } catch { /* empresa sem config — usa defaults */ }
+          const point = await this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId });
+          const intervalMs = companyConfig?.cameraSnapshotIntervalMs ?? 1000;
+          const staleSec = point?.anprStaleAfterSeconds ?? companyConfig?.anprStaleAfterSeconds ?? 5;
+          const confirmReads = point?.anprConfirmationReads ?? companyConfig?.anprConfirmationReads ?? 2;
           await this.anpr.upsertMonitor(camera, {
-            intervalSeconds: Math.max(1, Math.round(companyConfig.cameraSnapshotIntervalMs / 1000)),
-            staleAfterSeconds: point?.anprStaleAfterSeconds ?? companyConfig.anprStaleAfterSeconds,
-            confirmationReads: point?.anprConfirmationReads ?? companyConfig.anprConfirmationReads,
+            intervalSeconds: Math.max(1, Math.round(intervalMs / 1000)),
+            staleAfterSeconds: staleSec,
+            confirmationReads: confirmReads,
           });
           this.registered.add(camera.id);
-        } catch { this.logger.warn(`Monitor indisponível para câmera ${camera.id}`); }
+        } catch (error: any) { this.logger.warn(`Monitor indisponível para câmera ${camera.id}: ${error?.message ?? error}`); }
       }
     }
     // Single Nest owner per Python instance; also removes leftovers after a Nest restart.
