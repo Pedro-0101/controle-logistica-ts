@@ -10,6 +10,7 @@ export class DatabaseErrorFilter implements ExceptionFilter {
       '23505': [409, 'Já existe um registro com esses dados'],
       '23503': [409, 'Registro vinculado a outros dados ou referência inexistente'],
       '22P02': [400, 'Identificador ou valor inválido'],
+      '42703': [500, 'Coluna inexistente no banco de dados — execute as migrações pendentes'],
     };
     const [statusCode, message] = errors[code ?? ''] ?? [500, 'Não foi possível concluir a operação no banco'];
     host.switchToHttp().getResponse<Response>().status(statusCode).json({ statusCode, message });

@@ -70,14 +70,14 @@ export class Vehicle {
     description: 'ID do usuário que criou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column()
+  @Column('uuid')
   createdById: string;
 
   @ApiProperty({
     description: 'ID do último usuário que atualizou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @Column({ nullable: true })
+  @Column('uuid', { nullable: true })
   updatedById: string;
 
   @ApiProperty({
