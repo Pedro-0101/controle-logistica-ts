@@ -10,6 +10,7 @@ import { CameraObservation } from './observation.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { MediaMTXService } from '../camera/mediamtx.service.js';
 import { SnapshotService } from '../camera/snapshot.service.js';
+import { CompanyConfigService } from '../company-config/company-config.service.js';
 import type { Actor } from '../auth/company-scope.js';
 import type { CurrentObservation } from './observation.schema.js';
 
@@ -59,6 +60,9 @@ describe('MonitoringService', () => {
   const snapshotService = {
     capture: vi.fn(),
   };
+  const companyConfigService = {
+    findOne: vi.fn(),
+  };
   const configService = {
     get: vi.fn(),
   };
@@ -77,6 +81,7 @@ describe('MonitoringService', () => {
         { provide: AnprService, useValue: anprService },
         { provide: MediaMTXService, useValue: mediamtxService },
         { provide: SnapshotService, useValue: snapshotService },
+        { provide: CompanyConfigService, useValue: companyConfigService },
         { provide: ConfigService, useValue: configService },
       ],
     }).compile();
@@ -119,11 +124,44 @@ describe('MonitoringService', () => {
       camerasRepo.find.mockResolvedValue([camera]);
       pointsRepo.findOneBy.mockResolvedValue({ id: 'point-1', companyId: 'company-1', active: true, adminUnityId: 'unit-1' });
       unitsRepo.findOneBy.mockResolvedValue({ id: 'unit-1', companyId: 'company-1', active: true });
+      companyConfigService.findOne.mockResolvedValue({
+        cameraSnapshotIntervalMs: 2000,
+        anprStaleAfterSeconds: 10,
+        anprConfirmationReads: 3,
+      });
       anprService.listMonitors.mockResolvedValue([]);
 
       await service.reconcile();
 
-      expect(anprService.upsertMonitor).toHaveBeenCalledWith(camera);
+      expect(anprService.upsertMonitor).toHaveBeenCalledWith(camera, {
+        intervalSeconds: 2,
+        staleAfterSeconds: 10,
+        confirmationReads: 3,
+      });
+    });
+
+    it('deve usar overrides do ponto quando disponíveis', async () => {
+      const camera = { id: 'cam-1', pointId: 'point-1', adminUnityId: 'unit-1', companyId: 'company-1' } as Camera;
+      camerasRepo.find.mockResolvedValue([camera]);
+      pointsRepo.findOneBy.mockResolvedValue({
+        id: 'point-1', companyId: 'company-1', active: true, adminUnityId: 'unit-1',
+        anprStaleAfterSeconds: 15, anprConfirmationReads: 5,
+      });
+      unitsRepo.findOneBy.mockResolvedValue({ id: 'unit-1', companyId: 'company-1', active: true });
+      companyConfigService.findOne.mockResolvedValue({
+        cameraSnapshotIntervalMs: 2000,
+        anprStaleAfterSeconds: 10,
+        anprConfirmationReads: 3,
+      });
+      anprService.listMonitors.mockResolvedValue([]);
+
+      await service.reconcile();
+
+      expect(anprService.upsertMonitor).toHaveBeenCalledWith(camera, {
+        intervalSeconds: 2,
+        staleAfterSeconds: 15,
+        confirmationReads: 5,
+      });
     });
 
     it('não deve registrar câmera com ponto inválido', async () => {

@@ -5,12 +5,13 @@ import { Point } from '../point/entities/point.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { AnprModule } from '../anpr/anpr.module.js';
+import { CompanyConfigModule } from '../company-config/company-config.module.js';
 import { CameraObservation } from './observation.entity.js';
 import { MonitoringController } from './monitoring.controller.js';
 import { MonitoringService } from './monitoring.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera, Point, AdminUnity, CameraObservation]), CameraModule, AnprModule],
+  imports: [TypeOrmModule.forFeature([Camera, Point, AdminUnity, CameraObservation]), CameraModule, AnprModule, CompanyConfigModule],
   controllers: [MonitoringController], providers: [MonitoringService],
   exports: [MonitoringService, TypeOrmModule],
 })

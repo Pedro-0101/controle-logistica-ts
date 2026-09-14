@@ -233,4 +233,37 @@ describe('AnprService', () => {
       expect.objectContaining({ method: 'POST' }),
     );
   });
+
+  describe('upsertMonitor', () => {
+    it('deve enviar config resolvida para o serviço ANPR', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      });
+
+      await service.upsertMonitor(camera, {
+        intervalSeconds: 2,
+        staleAfterSeconds: 10,
+        confirmationReads: 3,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://anpr:8000/monitors/undefined',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            host: '192.168.11.241',
+            port: 80,
+            user: 'admin',
+            password: 'senha',
+            auth: 'digest',
+            interval_seconds: 2,
+            stale_after_seconds: 10,
+            confirmation_reads: 3,
+          }),
+        }),
+      );
+    });
+  });
 });

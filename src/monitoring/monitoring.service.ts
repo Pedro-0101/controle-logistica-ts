@@ -8,6 +8,7 @@ import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { MediaMTXService } from '../camera/mediamtx.service.js';
 import { SnapshotService } from '../camera/snapshot.service.js';
+import { CompanyConfigService } from '../company-config/company-config.service.js';
 import { type Actor, resolveCompanyScope, withCompanyScopeWhere } from '../auth/company-scope.js';
 import { CameraObservation } from './observation.entity.js';
 import type { CurrentObservation } from './observation.schema.js';
@@ -28,6 +29,7 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     private readonly anpr: AnprService,
     private readonly mediamtx: MediaMTXService,
     private readonly snapshotService: SnapshotService,
+    private readonly companyConfigService: CompanyConfigService,
     private readonly config: ConfigService,
   ) {}
 
@@ -56,7 +58,17 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       if (await this.validContext(camera)) {
         desired.add(camera.id);
         try {
-          await this.anpr.upsertMonitor(camera);
+          const [companyConfig, point] = await Promise.all([
+            this.companyConfigService.findOne(camera.companyId, {
+              userId: '', companyId: camera.companyId, role: 'admin',
+            } as any),
+            this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId }),
+          ]);
+          await this.anpr.upsertMonitor(camera, {
+            intervalSeconds: Math.max(1, Math.round(companyConfig.cameraSnapshotIntervalMs / 1000)),
+            staleAfterSeconds: point?.anprStaleAfterSeconds ?? companyConfig.anprStaleAfterSeconds,
+            confirmationReads: point?.anprConfirmationReads ?? companyConfig.anprConfirmationReads,
+          });
           this.registered.add(camera.id);
         } catch { this.logger.warn(`Monitor indisponível para câmera ${camera.id}`); }
       }

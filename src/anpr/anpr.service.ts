@@ -32,9 +32,12 @@ export class AnprService {
   reconhecerImagem(imagemBase64: string): Promise<PlacaReconhecida> {
     return this.post('/reconhecer-imagem', { imagem_base64: imagemBase64 });
   }
-  async upsertMonitor(camera: Camera): Promise<void> {
+  async upsertMonitor(camera: Camera, config: { intervalSeconds: number; staleAfterSeconds: number; confirmationReads: number }): Promise<void> {
     await this.request(`/monitors/${encodeURIComponent(camera.id)}`, 'PUT', {
-      ...this.cameraPayload(camera), interval_seconds: 1, stale_after_seconds: 5, confirmation_reads: 2,
+      ...this.cameraPayload(camera),
+      interval_seconds: config.intervalSeconds,
+      stale_after_seconds: config.staleAfterSeconds,
+      confirmation_reads: config.confirmationReads,
     });
   }
   async deleteMonitor(cameraId: string): Promise<void> {
