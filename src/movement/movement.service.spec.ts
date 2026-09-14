@@ -37,6 +37,7 @@ describe('MovementService', () => {
     find: vi.fn(),
     findOneBy: vi.fn(),
     remove: vi.fn((data: Partial<Movement>) => data),
+    createQueryBuilder: vi.fn(),
   };
   const anprService = { reconhecerCamera: vi.fn() };
   const vehicleService = { findOrCreateByPlate: vi.fn(), findOne: vi.fn() };
@@ -222,12 +223,69 @@ describe('MovementService', () => {
   });
 
   describe('findAll', () => {
+    const defaultFilters = { page: 1, limit: 20, orderBy: 'dateTime' as const, order: 'DESC' as const };
+    let qbMock: ReturnType<typeof createQbMock>;
+
+    function createQbMock() {
+      return {
+        leftJoin: vi.fn().mockReturnThis(),
+        addSelect: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        take: vi.fn().mockReturnThis(),
+        getCount: vi.fn().mockResolvedValue(0),
+        getRawAndEntities: vi.fn().mockResolvedValue({ entities: [], raw: [] }),
+      };
+    }
+
+    beforeEach(() => {
+      qbMock = createQbMock();
+      repository.createQueryBuilder = vi.fn().mockReturnValue(qbMock);
+    });
+
     it('usuário comum deve filtrar movimentos pela própria empresa', async () => {
-      repository.find.mockResolvedValue([{ id: '1' }]);
-      await service.findAll(companyActor);
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { companyId: 'company-1' },
+      qbMock.getRawAndEntities.mockResolvedValue({
+        entities: [{ id: '1', pointId: 'p-1', vehicleId: 'v-1' }],
+        raw: [{ point_id: 'p-1', point_name: 'Portão 1', point_code: 'P-001', point_type: 'entry', vehicle_id: 'v-1', vehicle_plate: 'ABC1D23', vehicle_code: 'V-001', vehicle_type: 'own', vehicle_active: true, cam_id: null, cam_name: null, cam_ip: null }],
       });
+      qbMock.getCount.mockResolvedValue(1);
+
+      const result = await service.findAll(companyActor, defaultFilters);
+
+      expect(repository.createQueryBuilder).toHaveBeenCalled();
+      expect(qbMock.andWhere).toHaveBeenCalledWith('m.companyId = :companyId', { companyId: 'company-1' });
+      expect(result).toEqual({
+        data: [expect.objectContaining({ id: '1' })],
+        meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      });
+    });
+
+    it('deve filtrar por type quando informado', async () => {
+      await service.findAll(companyActor, { ...defaultFilters, type: 'entry' });
+      expect(qbMock.andWhere).toHaveBeenCalledWith('m.type = :type', { type: 'entry' });
+    });
+
+    it('deve filtrar por status quando informado', async () => {
+      await service.findAll(companyActor, { ...defaultFilters, status: 'open' });
+      expect(qbMock.andWhere).toHaveBeenCalledWith('m.status = :status', { status: 'open' });
+    });
+
+    it('deve filtrar por plate quando informado', async () => {
+      await service.findAll(companyActor, { ...defaultFilters, plate: 'ABC' });
+      expect(qbMock.andWhere).toHaveBeenCalledWith('vehicle.plate ILIKE :plate', { plate: '%ABC%' });
+    });
+
+    it('deve incluir dados da câmera quando observação existe', async () => {
+      qbMock.getRawAndEntities.mockResolvedValue({
+        entities: [{ id: '1' }],
+        raw: [{ cam_id: 'cam-1', cam_name: 'Câmera 1', cam_ip: '192.168.1.1', point_id: 'p-1', point_name: 'Portão', point_code: 'P-001', point_type: 'entry', vehicle_id: null, vehicle_plate: null, vehicle_code: null, vehicle_type: null, vehicle_active: null }],
+      });
+
+      const result = await service.findAll(companyActor, defaultFilters);
+      expect(result.data[0]).toEqual(expect.objectContaining({
+        camera: { id: 'cam-1', name: 'Câmera 1', ip: '192.168.1.1' },
+      }));
     });
   });
 

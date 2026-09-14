@@ -58,11 +58,12 @@ describe('MovementController', () => {
     expect(service.createFromCamera).toHaveBeenCalledWith(dto, user);
   });
 
-  it('findAll delega ao service com o usuário', () => {
-    service.findAll.mockReturnValue([{ id: '1' }]);
+  it('findAll delega ao service com filtros e usuário', () => {
+    const filters = { page: 1, limit: 20, orderBy: 'dateTime' as const, order: 'DESC' as const };
+    service.findAll.mockReturnValue({ data: [{ id: '1' }], meta: { page: 1, limit: 20, total: 1, totalPages: 1 } });
 
-    expect(controller.findAll(user)).toEqual([{ id: '1' }]);
-    expect(service.findAll).toHaveBeenCalledWith(user);
+    expect(controller.findAll(filters as never, user)).toEqual({ data: [{ id: '1' }], meta: { page: 1, limit: 20, total: 1, totalPages: 1 } });
+    expect(service.findAll).toHaveBeenCalledWith(user, filters);
   });
 
   it('findOne delega ao service com id e usuário', () => {

@@ -18,6 +18,7 @@ import { Vehicle } from '../vehicle/entities/vehicle.entity.js';
 import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
+import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
 
 @Injectable()
 export class MovementService {
@@ -104,11 +105,112 @@ export class MovementService {
     );
   }
 
-  findAll(actor: Actor) {
+  async findAll(actor: Actor, filters: FindMovementsDtoType) {
     const scope = resolveCompanyScope(actor);
-    return this.movementRepository.find({
-      where: companyScopeFilter<Movement>(scope),
+    const { page, limit, type, status, pointId, vehicleId, plate, driverName, purpose, autoRegistered, dateFrom, dateTo, search, orderBy, order } = filters;
+
+    const qb = this.movementRepository
+      .createQueryBuilder('m')
+      .leftJoin('points', 'point', 'point.id = m.pointId')
+      .addSelect([
+        'point.id AS point_id',
+        'point.name AS point_name',
+        'point.code AS point_code',
+        'point.type AS point_type',
+      ])
+      .leftJoin('vehicles', 'vehicle', 'vehicle.id = m.vehicleId')
+      .addSelect([
+        'vehicle.id AS vehicle_id',
+        'vehicle.plate AS vehicle_plate',
+        'vehicle.code AS vehicle_code',
+        'vehicle.type AS vehicle_type',
+        'vehicle.active AS vehicle_active',
+      ])
+      .leftJoin('camera_observations', 'obs', 'obs.id = m.observationId')
+      .leftJoin('cameras', 'cam', 'cam.id = obs.cameraId')
+      .addSelect([
+        'cam.id AS cam_id',
+        'cam.name AS cam_name',
+        'cam.ip AS cam_ip',
+      ]);
+
+    if (scope.mode === 'company') {
+      qb.andWhere('m.companyId = :companyId', { companyId: scope.companyId });
+    }
+
+    if (type) {
+      qb.andWhere('m.type = :type', { type });
+    }
+    if (status) {
+      qb.andWhere('m.status = :status', { status });
+    }
+    if (pointId) {
+      qb.andWhere('m.pointId = :pointId', { pointId });
+    }
+    if (vehicleId) {
+      qb.andWhere('m.vehicleId = :vehicleId', { vehicleId });
+    }
+    if (plate) {
+      qb.andWhere('vehicle.plate ILIKE :plate', { plate: `%${plate}%` });
+    }
+    if (driverName) {
+      qb.andWhere('m.driverName ILIKE :driverName', { driverName: `%${driverName}%` });
+    }
+    if (purpose) {
+      qb.andWhere('m.purpose ILIKE :purpose', { purpose: `%${purpose}%` });
+    }
+    if (autoRegistered !== undefined) {
+      qb.andWhere('m.autoRegistered = :autoRegistered', { autoRegistered });
+    }
+    if (dateFrom) {
+      qb.andWhere('m.dateTime >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere('m.dateTime <= :dateTo', { dateTo });
+    }
+    if (search) {
+      qb.andWhere(
+        '(vehicle.plate ILIKE :search OR m.driverName ILIKE :search OR m.purpose ILIKE :search OR m.notes ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const allowedOrderColumns: Record<string, string> = {
+      dateTime: 'm.dateTime',
+      createdAt: 'm.createdAt',
+      status: 'm.status',
+      type: 'm.type',
+    };
+    const orderColumn = allowedOrderColumns[orderBy] ?? 'm.dateTime';
+    qb.orderBy(orderColumn, order === 'ASC' ? 'ASC' : 'DESC');
+
+    const total = await qb.getCount();
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+    qb.skip(skip).take(limit);
+
+    const rawResults = await qb.getRawAndEntities();
+
+    const data = rawResults.entities.map((movement, idx) => {
+      const raw = rawResults.raw[idx];
+      return {
+        ...movement,
+        point: raw?.point_id
+          ? { id: raw.point_id, name: raw.point_name, code: raw.point_code, type: raw.point_type }
+          : null,
+        vehicle: raw?.vehicle_id
+          ? { id: raw.vehicle_id, plate: raw.vehicle_plate, code: raw.vehicle_code, type: raw.vehicle_type, active: raw.vehicle_active }
+          : null,
+        camera: raw?.cam_id
+          ? { id: raw.cam_id, name: raw.cam_name, ip: raw.cam_ip }
+          : null,
+      };
     });
+
+    return {
+      data,
+      meta: { page, limit, total, totalPages },
+    };
   }
 
   async findOne(id: string, actor: Actor) {

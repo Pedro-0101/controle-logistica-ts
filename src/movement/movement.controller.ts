@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
-import { ZodValidationPipe, ZodResponse } from 'zod-nest';
+import { ZodValidationPipe, ZodResponse, ZodQuery } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
@@ -8,6 +8,8 @@ import { CreateMovementFromObservationDto } from './dto/create-movement-from-obs
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
+import { FindMovementsDto } from './dto/find-movements.schema.js';
+import { PaginatedMovementsResponseDto } from './dto/movement-list-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -97,12 +99,19 @@ export class MovementController {
 
   @Get()
   @ApiOperation({
-    summary: 'Listar todos os movimentos',
-    description: 'Retorna uma lista com todos os movimentos registrados no sistema.',
+    summary: 'Listar movimentos (paginado com filtros)',
+    description:
+      'Retorna uma lista paginada de movimentos com dados do ponto, veículo e câmera vinculados.\n\n' +
+      '**Filtros disponíveis:** tipo, status, ponto, veículo, placa, motorista, motivo, auto-registrado, período.\n' +
+      '**Busca livre:** campo `search` pesquisa por placa, motorista, motivo e notas.',
   })
-  @ZodResponse({ status: 200, type: [MovementResponseDto] })
-  findAll(@CurrentUser() user: AuthenticatedUser) {
-    return this.movementService.findAll(user);
+  @ZodQuery(FindMovementsDto.schema)
+  @ZodResponse({ status: 200, type: PaginatedMovementsResponseDto })
+  findAll(
+    @Query(new ZodValidationPipe(FindMovementsDto)) filters: FindMovementsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.movementService.findAll(user, filters);
   }
 
   @Get(':id')
