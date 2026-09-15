@@ -20,7 +20,7 @@ export interface PlacaReconhecida {
 export class AnprService {
   private readonly baseUrl: string;
   constructor(config: ConfigService) {
-    this.baseUrl = (config.get<string>('ANPR_SERVICE_URL') ?? 'http://localhost:8000').replace(/\/+$/, '');
+    this.baseUrl = (config.get<string>('ANPR_SERVICE_URL') ?? 'http://127.0.0.1:8000').replace(/\/+$/, '');
   }
   private cameraPayload(camera: Camera) {
     return { host: camera.ip, port: camera.port, user: camera.username, password: camera.password,

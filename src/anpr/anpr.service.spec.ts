@@ -210,7 +210,7 @@ describe('AnprService', () => {
     });
   });
 
-  it('deve usar http://localhost:8000 como fallback sem configuração', async () => {
+  it('deve usar http://127.0.0.1:8000 como fallback sem configuração', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -229,7 +229,7 @@ describe('AnprService', () => {
     await fallbackService.reconhecerImagem('base64fake');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:8000/reconhecer-imagem',
+      'http://127.0.0.1:8000/reconhecer-imagem',
       expect.objectContaining({ method: 'POST' }),
     );
   });

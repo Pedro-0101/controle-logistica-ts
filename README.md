@@ -65,7 +65,7 @@ com `sourceOnDemand` para só conectar quando houver espectador).
 | `JWT_SECRET` | Chave de assinatura dos tokens | — |
 | `JWT_EXPIRATION` | Validade do token JWT | `1d` |
 | `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin criado pelo seed | `admin@sistema.com` / `admin123` |
-| `ANPR_SERVICE_URL` | URL do microserviço Python | `http://localhost:8000` |
+| `ANPR_SERVICE_URL` | URL do microserviço Python (uvicorn binda em `127.0.0.1`; evite `localhost`, que pode resolver para IPv6 `::1` e falhar) | `http://127.0.0.1:8000` |
 | `PORT` | Porta da API NestJS | `3000` |
 | `OBS_KEY` / `OBS_SECRET` | Observabilidade (NestJS Observe) | — |
 
