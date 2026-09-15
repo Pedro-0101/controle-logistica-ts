@@ -16,7 +16,22 @@ def test_ignora_minusculas_e_separadores():
 
 
 def test_corrige_confusoes_de_ocr_digito_no_lugar_de_letra():
-    assert normalizar_placa("4BC1234") == Placa("ABC1Z34", "mercosul")
+    # Antiga exige 1 correção (4→A); Mercosul exigiria 2 (4→A, 2→Z).
+    assert normalizar_placa("4BC1234") == Placa("ABC1234", "antiga")
+
+
+def test_corrige_letra_no_lugar_de_digito():
+    # Antiga exige 1 correção (I→1); Mercosul exigiria 2 (I→1, 2→Z).
+    assert normalizar_placa("ABCI234") == Placa("ABC1234", "antiga")
+
+
+def test_corrige_confusao_j_por_1():
+    assert normalizar_placa("ABCJ234") == Placa("ABC1234", "antiga")
+
+
+def test_escolhe_formato_com_menos_correcoes():
+    # Mercosul exige 1 correção (4→A); antiga exigiria 2 (4→A, D→0).
+    assert normalizar_placa("4BC1D23") == Placa("ABC1D23", "mercosul")
 
 
 def test_encontra_placa_dentro_de_texto_com_espacos():

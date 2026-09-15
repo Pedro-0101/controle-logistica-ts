@@ -17,6 +17,13 @@ class Settings(BaseSettings):
 
     anpr_lang: str = "en"
     anpr_warmup: bool = False
+    # Detecção YOLO: modelo vazio = auto (weights/best.pt local, senão HuggingFace).
+    anpr_yolo_model: str = ""
+    anpr_yolo_imgsz: int = Field(640, ge=128, le=4096)
+    anpr_yolo_conf: float = Field(0.25, gt=0.0, le=1.0)
+    # Pré-processamento antes do OCR (CLAHE + redução de ruído + upscale).
+    anpr_preprocessar: bool = True
+    anpr_upscale_altura_min: int = Field(64, ge=0, le=512)
     inference_timeout_seconds: float = Field(30.0, gt=0)
     max_manual_pending: int = Field(4, ge=1, le=64)
     max_monitors: int = Field(64, ge=1, le=128)

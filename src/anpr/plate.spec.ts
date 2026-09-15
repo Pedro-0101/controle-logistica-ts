@@ -14,7 +14,13 @@ describe('normalizarPlaca', () => {
   });
 
   it('deve corrigir confusões de OCR (dígito no lugar de letra)', () => {
-    expect(normalizarPlaca('4BC1234')).toEqual({ valor: 'ABC1Z34', formato: 'mercosul' });
+    // Antiga exige 1 correção (4→A); Mercosul exigiria 2 (4→A, 2→Z).
+    expect(normalizarPlaca('4BC1234')).toEqual({ valor: 'ABC1234', formato: 'antiga' });
+  });
+
+  it('deve escolher o formato que exige menos correções', () => {
+    // Mercosul exige 1 correção (4→A); antiga exigiria 2 (4→A, D→0).
+    expect(normalizarPlaca('4BC1D23')).toEqual({ valor: 'ABC1D23', formato: 'mercosul' });
   });
 
   it('deve encontrar placa dentro de texto com espaços', () => {
@@ -37,9 +43,17 @@ describe('normalizarPlaca', () => {
   });
 
   it('deve corrigir letra no lugar de dígito (confusão de OCR)', () => {
+    // Antiga exige 1 correção (I→1); Mercosul exigiria 2 (I→1, 2→Z).
     expect(normalizarPlaca('ABCI234')).toEqual({
-      valor: 'ABC1Z34',
-      formato: 'mercosul',
+      valor: 'ABC1234',
+      formato: 'antiga',
+    });
+  });
+
+  it('deve corrigir confusão J por 1', () => {
+    expect(normalizarPlaca('ABCJ234')).toEqual({
+      valor: 'ABC1234',
+      formato: 'antiga',
     });
   });
 

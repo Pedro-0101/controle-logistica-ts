@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .plate import Placa, normalizar_placa
+from .preprocessamento import preparar_recorte, realcar_imagem
 
 
 @dataclass(frozen=True)
@@ -62,8 +63,9 @@ class PlacaRecognizer:
     def reconhecer(self, imagem: np.ndarray, full_frame_fallback: bool = True) -> list[CandidatoPlaca]:
         """Retorna os candidatos a placa em uma imagem (BGR, OpenCV).
 
-        Tenta YOLO+PaddleOCR primeiro. Se YOLO não detectar nada,
-        faz fallback para PaddleOCR na imagem inteira.
+        Tenta YOLO+PaddleOCR primeiro (recorte original; se o OCR não ler
+        nada válido, repete com o recorte pré-processado). Se ainda assim
+        não houver candidatos, faz fallback para PaddleOCR na imagem inteira.
         """
         candidatos = self._reconhecer_yolo(imagem)
         if candidatos or not full_frame_fallback:
@@ -71,16 +73,38 @@ class PlacaRecognizer:
         return self._reconhecer_paddle_completo(imagem)
 
     def _reconhecer_yolo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
-        """Etapa 1: YOLO detecta placa → PaddleOCR lê o recorte."""
+        """Etapa 1: YOLO detecta placa → PaddleOCR lê o recorte.
+
+        Duas tentativas por imagem: primeiro o recorte original (rápido e
+        suficiente na maioria dos casos); se nenhum recorte gerar placa
+        válida, repete com pré-processamento (contraste + upscale), que
+        resgata placas difíceis sem penalizar as fáceis.
+        """
+        from ..config import settings
         from .detector import detectar_placas, recortar_placa
 
         deteccoes = detectar_placas(imagem)
-        candidatos: list[CandidatoPlaca] = []
+        if not deteccoes:
+            return []
 
+        candidatos = self._ocr_em_recortes(imagem, deteccoes, preprocessar=False)
+        if candidatos or not settings.anpr_preprocessar:
+            return candidatos
+        return self._ocr_em_recortes(imagem, deteccoes, preprocessar=True)
+
+    def _ocr_em_recortes(
+        self, imagem: np.ndarray, deteccoes, preprocessar: bool
+    ) -> list[CandidatoPlaca]:
+        """Roda o OCR nos recortes das detecções (com ou sem pré-processamento)."""
+        from .detector import recortar_placa
+
+        candidatos: list[CandidatoPlaca] = []
         for det in deteccoes:
             recorte = recortar_placa(imagem, det)
             if recorte.size == 0:
                 continue
+            if preprocessar:
+                recorte = preparar_recorte(recorte)
 
             resultado = self._ocr.predict(recorte)
             for pagina in resultado:
@@ -101,8 +125,8 @@ class PlacaRecognizer:
         return candidatos
 
     def _reconhecer_paddle_completo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
-        """Fallback: PaddleOCR na imagem inteira (sem YOLO)."""
-        resultado = self._ocr.predict(imagem)
+        """Fallback: PaddleOCR na imagem inteira (sem YOLO), com realce de contraste."""
+        resultado = self._ocr.predict(realcar_imagem(imagem))
         candidatos: list[CandidatoPlaca] = []
         for pagina in resultado:
             textos = pagina["rec_texts"]

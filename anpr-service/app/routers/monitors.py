@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -32,6 +33,9 @@ class CameraMonitor:
         self.captured_at = self.last_seen = None
         self.last_mono = 0.0
         self.reads = 0
+        # Histórico das últimas leituras para votação: uma leitura errada
+        # pontual do OCR não zera a confirmação da placa mais votada.
+        self.historico: list[str] = []
         self.epoch = 0
         self.closed = False
         self.task = None
@@ -44,6 +48,7 @@ class CameraMonitor:
         self.observation_id = self.plate = self.confidence = self.box = self.evidence = None
         self.captured_at = self.last_seen = None
         self.reads = 0
+        self.historico = []
 
     def state(self):
         if self.observation_id and time.monotonic() - self.last_mono >= self.config.stale_after_seconds:
@@ -68,22 +73,29 @@ class CameraMonitor:
             # A blank frame breaks consecutive confirmation but tolerates transient occlusion.
             if self.status != "confirmed":
                 self.reads = 0
+                self.historico = []
             if not self.observation_id:
                 self.status = "waiting"
             return
-        plate = result.placa.valor
-        if plate != self.plate:
+        # Votação multi-frame: a placa mais votada na janela recente é eleita,
+        # tolerando misreads pontuais do OCR sem zerar a confirmação.
+        self.historico.append(result.placa.valor)
+        del self.historico[:-(self.config.confirmation_reads + 2)]
+        votos = Counter(self.historico)
+        mais_votada = max(votos, key=votos.get)
+        if mais_votada != self.plate:
             logger.info(
-                "[monitor:%s] Nova placa detectada: %s (confianca=%.2f) | Leituras: %d/%d",
-                self.camera_id, plate, float(result.confianca),
-                self.reads + 1, self.config.confirmation_reads,
+                "[monitor:%s] Nova placa detectada: %s (confianca=%.2f) | Votos: %d/%d",
+                self.camera_id, mais_votada, float(result.confianca),
+                votos[mais_votada], self.config.confirmation_reads,
             )
-            self.invalidate("candidate")
+            # Troca a observação sem limpar o histórico que elegeu a nova placa.
             self.observation_id = str(uuid4())
-            self.plate = plate
+            self.plate = mais_votada
             self.captured_at = captured
             self.evidence = jpeg
-        self.reads += 1
+            self.status = "candidate"
+        self.reads = votos[self.plate]
         self.last_seen, self.last_mono = captured, monotonic
         self.confidence = float(result.confianca)
         self.box = list(result.box) if result.box else None
@@ -91,7 +103,7 @@ class CameraMonitor:
             if self.status != "confirmed":
                 logger.info(
                     "[monitor:%s] *** PLACA CONFIRMADA: %s (confianca=%.2f) | Leituras: %d/%d | observation_id=%s",
-                    self.camera_id, plate, self.confidence,
+                    self.camera_id, self.plate, self.confidence,
                     self.reads, self.config.confirmation_reads, self.observation_id,
                 )
             self.status = "confirmed"

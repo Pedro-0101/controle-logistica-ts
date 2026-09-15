@@ -50,6 +50,7 @@ const LETRA_PARA_DIGITO: Record<string, string> = {
   D: '0',
   I: '1',
   L: '1',
+  J: '1',
   Z: '2',
   E: '3',
   A: '4',
@@ -70,10 +71,12 @@ const ANTIGA_POS = 'LLLNNNN';
  * Tenta "consertar" um texto de 7 caracteres seguindo o padrão de posições
  * informado. Em cada posição, aceita o caractere correto ou converte o
  * caractere errado (dígito↔letra) usando as tabelas acima. Retorna `null` se
- * não for possível ajustar para uma placa válida.
+ * não for possível ajustar; senão, retorna o valor ajustado e quantas
+ * correções foram necessárias (permite escolher o formato mais provável).
  */
-function ajustar(texto: string, padrao: string): string | null {
+function ajustar(texto: string, padrao: string): { valor: string; correcoes: number } | null {
   const saida: string[] = [];
+  let correcoes = 0;
   for (let i = 0; i < padrao.length; i++) {
     const ch = texto[i];
     const tipo = padrao[i];
@@ -82,6 +85,7 @@ function ajustar(texto: string, padrao: string): string | null {
         saida.push(ch);
       } else if (ch in DIGITO_PARA_LETRA) {
         saida.push(DIGITO_PARA_LETRA[ch]);
+        correcoes++;
       } else {
         return null;
       }
@@ -90,6 +94,7 @@ function ajustar(texto: string, padrao: string): string | null {
         saida.push(ch);
       } else if (ch in LETRA_PARA_DIGITO) {
         saida.push(LETRA_PARA_DIGITO[ch]);
+        correcoes++;
       } else {
         return null;
       }
@@ -98,10 +103,10 @@ function ajustar(texto: string, padrao: string): string | null {
 
   const resultado = saida.join('');
   if (padrao === MERCOSUL_POS && MERCOSUL_RE.test(resultado)) {
-    return resultado;
+    return { valor: resultado, correcoes };
   }
   if (padrao === ANTIGA_POS && ANTIGA_RE.test(resultado)) {
-    return resultado;
+    return { valor: resultado, correcoes };
   }
   return null;
 }
@@ -110,7 +115,9 @@ function ajustar(texto: string, padrao: string): string | null {
  * Classifica um texto já limpo (somente A-Z e 0-9) como placa Mercosul ou
  * antiga. Tenta primeiro o "match" exato; se falhar, tenta corrigir as
  * posições trocadas pelo OCR. Só tenta corrigir quando há pelo menos 2 dígitos
- * (evita tratar palavras comuns como placa).
+ * (evita tratar palavras comuns como placa). Quando ambos os formatos são
+ * possíveis, escolhe o que exige menos correções — cada correção é uma chance
+ * adicional de erro.
  */
 function classificar(texto: string): Placa | null {
   if (texto.length !== 7) {
@@ -126,16 +133,19 @@ function classificar(texto: string): Placa | null {
   if (digitos < 2) {
     return null;
   }
+  let melhor: Placa | null = null;
+  let melhorCorrecoes = Infinity;
   for (const padrao of [MERCOSUL_POS, ANTIGA_POS]) {
-    const corrigido = ajustar(texto, padrao);
-    if (corrigido) {
-      return {
-        valor: corrigido,
+    const ajuste = ajustar(texto, padrao);
+    if (ajuste && ajuste.correcoes < melhorCorrecoes) {
+      melhor = {
+        valor: ajuste.valor,
         formato: padrao === MERCOSUL_POS ? 'mercosul' : 'antiga',
       };
+      melhorCorrecoes = ajuste.correcoes;
     }
   }
-  return null;
+  return melhor;
 }
 
 /**

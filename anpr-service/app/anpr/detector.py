@@ -1,14 +1,24 @@
 """Detecção de placas veiculares via YOLO.
 
-Usa um modelo YOLOv8 treinado para detectar regiões de placas em imagens.
+Usa um modelo YOLO treinado para detectar regiões de placas em imagens.
 O recorte da placa é então enviado ao PaddleOCR para leitura do texto.
+
+O modelo é resolvido por prioridade:
+1. ANPR_YOLO_MODEL (caminho local ou URL explícita)
+2. weights/best.pt dentro do serviço ou na raiz do projeto
+3. URL pública do HuggingFace (download na primeira execução)
 """
 
-import os
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
+
+from ..config import BASE_DIR, settings
+
+URL_MODELO_HUGGINGFACE = (
+    "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +34,20 @@ class DeteccaoPlaca:
 _model = None
 
 
+def _resolver_modelo() -> str:
+    """Resolve o caminho/URL do modelo YOLO conforme a configuração."""
+    if settings.anpr_yolo_model:
+        return settings.anpr_yolo_model
+    candidatos = (
+        BASE_DIR / "weights" / "best.pt",
+        BASE_DIR.parent / "weights" / "best.pt",
+    )
+    for caminho in candidatos:
+        if caminho.exists():
+            return str(caminho)
+    return URL_MODELO_HUGGINGFACE
+
+
 def _carregar_modelo():
     """Carrega o modelo YOLO (singleton, sob demanda)."""
     global _model
@@ -32,24 +56,21 @@ def _carregar_modelo():
 
     from ultralytics import YOLO
 
-    modelo_path = os.environ.get(
-        "ANPR_YOLO_MODEL",
-        "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt",
-    )
-    _model = YOLO(modelo_path)
+    _model = YOLO(_resolver_modelo())
     return _model
 
 
 def detectar_placas(
     imagem: np.ndarray,
-    conf_min: float = 0.25,
+    conf_min: float | None = None,
     margem: int = 10,
 ) -> list[DeteccaoPlaca]:
     """Detecta regiões de placas na imagem usando YOLO.
 
     Args:
         imagem: Imagem BGR (OpenCV).
-        conf_min: Confiança mínima para considerar uma detecção.
+        conf_min: Confiança mínima para considerar uma detecção
+            (None usa o padrão configurado em ANPR_YOLO_CONF).
         margem: Pixels de margem ao redor do bounding box.
 
     Returns:
@@ -57,10 +78,13 @@ def detectar_placas(
     """
     model = _carregar_modelo()
     h, w = imagem.shape[:2]
+    if conf_min is None:
+        conf_min = settings.anpr_yolo_conf
 
     resultados = model.predict(
         imagem,
         conf=conf_min,
+        imgsz=settings.anpr_yolo_imgsz,
         verbose=False,
     )
 

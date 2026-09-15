@@ -28,6 +28,7 @@ LETRA_PARA_DIGITO = {
     "D": "0",
     "I": "1",
     "L": "1",
+    "J": "1",
     "Z": "2",
     "E": "3",
     "A": "4",
@@ -54,14 +55,22 @@ class Placa:
         )
 
 
-def _ajustar(texto: str, padrao: str) -> str | None:
+def _ajustar(texto: str, padrao: str) -> tuple[str, int] | None:
+    """Corrige confusões de OCR posição a posição.
+
+    Retorna `(placa_ajustada, quantidade_de_correcoes)` ou None se não for
+    possível ajustar ao padrão informado. O número de correções permite
+    escolher, entre dois formatos válidos, o mais provável.
+    """
     saida: list[str] = []
+    correcoes = 0
     for ch, tipo in zip(texto, padrao, strict=True):
         if tipo == "L":
             if ch.isalpha():
                 saida.append(ch)
             elif ch in DIGITO_PARA_LETRA:
                 saida.append(DIGITO_PARA_LETRA[ch])
+                correcoes += 1
             else:
                 return None
         else:  # "N"
@@ -69,14 +78,15 @@ def _ajustar(texto: str, padrao: str) -> str | None:
                 saida.append(ch)
             elif ch in LETRA_PARA_DIGITO:
                 saida.append(LETRA_PARA_DIGITO[ch])
+                correcoes += 1
             else:
                 return None
 
     resultado = "".join(saida)
     if padrao == MERCOSUL_POS and MERCOSUL_RE.match(resultado):
-        return resultado
+        return resultado, correcoes
     if padrao == ANTIGA_POS and ANTIGA_RE.match(resultado):
-        return resultado
+        return resultado, correcoes
     return None
 
 
@@ -91,13 +101,18 @@ def _classificar(texto: str) -> Placa | None:
     # evitando falso positivo em palavras (ex.: "TERRAPLENAGEM").
     if sum(c.isdigit() for c in texto) < 2:
         return None
+    # Quando ambos os formatos são possíveis, escolhe o que exige menos
+    # correções de OCR — cada correção é uma chance adicional de erro.
+    melhor: tuple[str, str, int] | None = None
     for padrao in (MERCOSUL_POS, ANTIGA_POS):
-        corrigido = _ajustar(texto, padrao)
-        if corrigido:
-            return Placa(
-                valor=corrigido,
-                formato="mercosul" if padrao == MERCOSUL_POS else "antiga",
-            )
+        ajuste = _ajustar(texto, padrao)
+        if ajuste is None:
+            continue
+        formato = "mercosul" if padrao == MERCOSUL_POS else "antiga"
+        if melhor is None or ajuste[1] < melhor[2]:
+            melhor = (ajuste[0], formato, ajuste[1])
+    if melhor is not None:
+        return Placa(valor=melhor[0], formato=melhor[1])
     return None
 
 
