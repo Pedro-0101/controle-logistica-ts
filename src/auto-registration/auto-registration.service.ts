@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -87,9 +87,20 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
   private async processObservation(camera: Camera, state: CurrentObservation) {
     const companyId = camera.companyId;
-    const companyConfig = await this.companyConfigService.findOne(companyId, {
-      userId: '', companyId, role: 'admin',
-    } as any);
+    let companyConfig;
+    try {
+      companyConfig = await this.companyConfigService.findOne(companyId, {
+        userId: '', companyId, role: 'admin',
+      } as any);
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        this.logger.log(`Config not found for company ${companyId}, creating with defaults`);
+        const systemUserId = await this.getSystemUserId(companyId);
+        companyConfig = await this.companyConfigService.createWithDefaults(companyId, systemUserId);
+      } else {
+        throw err;
+      }
+    }
 
     const point = await this.pointService.findOne(camera.pointId, {
       userId: '', companyId, role: 'admin',
