@@ -41,6 +41,7 @@ async function bootstrap() {
     .addTag('Company Config', 'Configurações globais da empresa: parâmetros ANPR (confiança, timeout, cooldown), defaults de câmeras, e comportamento de movimentação. Estes valores são usados quando o ponto tem `inheritCompanyConfig = true` (default) ou quando um campo específico do ponto está null.')
     .addTag('Auto Registration', 'Revisão de movimentações registradas automaticamente por ANPR. Quando uma placa não é encontrada na base de dados, o sistema cria um movimento pendente de revisão. O operador corrige a placa ou cadastra o veículo e aciona o recálculo.')
     .addTag('Monitoring', 'Monitoramento em tempo real de câmeras IP: leitura contínua de placas (polling), captura de snapshots sob demanda, e streaming ao vivo (HLS/WebRTC/RTSP) via MediaMTX.')
+    .addTag('Stats', 'Estatísticas e informações do sistema')
     .addBearerAuth()
     .build();
 
