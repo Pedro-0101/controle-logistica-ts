@@ -53,10 +53,10 @@ export const createCompanyConfigSchema = z
       examples: [5],
       default: 5,
     }),
-    anprAutoRegister: z.boolean().default(false).meta({
+    anprAutoRegister: z.boolean().default(true).meta({
       description: 'Habilitar registro automático de movimentação por ANPR. Quando true, o sistema cria movimentos automaticamente ao detectar placas confirmadas pelas câmeras, sem intervenção do porteiro. Placas não reconhecidas ficam com status pending_review.',
-      examples: [false],
-      default: false,
+      examples: [true],
+      default: true,
     }),
     anprSaveUnrecognizedPhotos: z.boolean().default(true).meta({
       description: 'Salvar foto quando placa não é reconhecida na base de dados. A foto fica disponível no campo photoPath do movimento pending_review e pode ser exibida ao operador para validação visual.',
