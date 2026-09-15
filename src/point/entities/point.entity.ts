@@ -68,10 +68,18 @@ export class Point {
   @Column({ default: true })
   active: boolean;
 
-  // ── ANPR / Auto-registration config (overrides CompanyConfig when set) ──
+  // ── ANPR / Auto-registration config ──
 
   @ApiProperty({
-    description: 'Habilitar registro automático de movimentação por ANPR neste ponto (null = usar config da empresa)',
+    description: 'Herdar configurações ANPR da empresa. Se true, ignora os campos ANPR abaixo e usa a config da empresa.',
+    example: true,
+    default: true,
+  })
+  @Column({ default: true })
+  inheritCompanyConfig: boolean;
+
+  @ApiProperty({
+    description: 'Habilitar registro automático de movimentação por ANPR neste ponto (usado quando inheritCompanyConfig = false)',
     example: true,
     nullable: true,
     default: null,
@@ -80,7 +88,7 @@ export class Point {
   anprAutoRegister: boolean | null;
 
   @ApiProperty({
-    description: 'Salvar foto quando placa não reconhecida neste ponto (null = usar config da empresa)',
+    description: 'Salvar foto quando placa não reconhecida neste ponto (usado quando inheritCompanyConfig = false)',
     example: true,
     nullable: true,
     default: null,
@@ -89,7 +97,7 @@ export class Point {
   anprSaveUnrecognizedPhotos: boolean | null;
 
   @ApiProperty({
-    description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo neste ponto (null = usar config da empresa)',
+    description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo neste ponto (usado quando inheritCompanyConfig = false)',
     example: 30,
     nullable: true,
     default: null,
@@ -98,7 +106,7 @@ export class Point {
   anprAutoRegisterCooldownSeconds: number | null;
 
   @ApiProperty({
-    description: 'Confiança mínima para reconhecimento ANPR neste ponto (null = usar config da empresa)',
+    description: 'Confiança mínima para reconhecimento ANPR neste ponto (usado quando inheritCompanyConfig = false)',
     example: 0.85,
     nullable: true,
     default: null,
@@ -107,7 +115,7 @@ export class Point {
   anprConfidenceThreshold: number | null;
 
   @ApiProperty({
-    description: 'Timeout para match de placa em segundos neste ponto (null = usar config da empresa)',
+    description: 'Timeout para match de placa em segundos neste ponto (usado quando inheritCompanyConfig = false)',
     example: 5,
     nullable: true,
     default: null,
@@ -116,7 +124,7 @@ export class Point {
   anprMatchTimeoutSeconds: number | null;
 
   @ApiProperty({
-    description: 'Número de leituras para confirmar placa neste ponto (null = usar config da empresa)',
+    description: 'Número de leituras para confirmar placa neste ponto (usado quando inheritCompanyConfig = false)',
     example: 2,
     nullable: true,
     default: null,
@@ -125,7 +133,7 @@ export class Point {
   anprConfirmationReads: number | null;
 
   @ApiProperty({
-    description: 'Tempo para considerar observação stale em segundos neste ponto (null = usar config da empresa)',
+    description: 'Tempo para considerar observação stale em segundos neste ponto (usado quando inheritCompanyConfig = false)',
     example: 5,
     nullable: true,
     default: null,

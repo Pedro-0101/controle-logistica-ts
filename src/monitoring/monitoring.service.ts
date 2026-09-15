@@ -66,8 +66,12 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
           } catch { /* empresa sem config — usa defaults */ }
           const point = await this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId });
           const intervalMs = companyConfig?.cameraSnapshotIntervalMs ?? 1000;
-          const staleSec = point?.anprStaleAfterSeconds ?? companyConfig?.anprStaleAfterSeconds ?? 5;
-          const confirmReads = point?.anprConfirmationReads ?? companyConfig?.anprConfirmationReads ?? 2;
+          const staleSec = point?.inheritCompanyConfig
+            ? (companyConfig?.anprStaleAfterSeconds ?? 5)
+            : (point?.anprStaleAfterSeconds ?? companyConfig?.anprStaleAfterSeconds ?? 5);
+          const confirmReads = point?.inheritCompanyConfig
+            ? (companyConfig?.anprConfirmationReads ?? 2)
+            : (point?.anprConfirmationReads ?? companyConfig?.anprConfirmationReads ?? 2);
           await this.anpr.upsertMonitor(camera, {
             intervalSeconds: Math.max(1, Math.round(intervalMs / 1000)),
             staleAfterSeconds: staleSec,

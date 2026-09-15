@@ -31,32 +31,36 @@ export const pointResponseSchema = z
       description: 'Se o ponto está ativo (pontos inativos não recebem monitoramento)',
       examples: [true],
     }),
+    inheritCompanyConfig: z.boolean().meta({
+      description: 'Se herda configurações ANPR da empresa (true = usa config da empresa)',
+      examples: [true],
+    }),
     anprAutoRegister: z.boolean().nullable().meta({
-      description: 'Registro automático habilitado neste ponto (null = herda da empresa)',
+      description: 'Registro automático habilitado neste ponto (usado quando inheritCompanyConfig = false)',
       examples: [true],
     }),
     anprSaveUnrecognizedPhotos: z.boolean().nullable().meta({
-      description: 'Salvar foto quando placa não reconhecida (null = herda da empresa)',
+      description: 'Salvar foto quando placa não reconhecida (usado quando inheritCompanyConfig = false)',
       examples: [true],
     }),
     anprAutoRegisterCooldownSeconds: z.number().int().nullable().meta({
-      description: 'Cooldown em segundos entre registros automáticos do mesmo veículo (null = herda da empresa)',
+      description: 'Cooldown em segundos entre registros automáticos do mesmo veículo (usado quando inheritCompanyConfig = false)',
       examples: [30],
     }),
     anprConfidenceThreshold: z.number().nullable().meta({
-      description: 'Confiança mínima (0-1) para aceitar leitura ANPR (null = herda da empresa)',
+      description: 'Confiança mínima (0-1) para aceitar leitura ANPR (usado quando inheritCompanyConfig = false)',
       examples: [0.85],
     }),
     anprMatchTimeoutSeconds: z.number().int().nullable().meta({
-      description: 'Timeout em segundos para confirmar leitura de placa (null = herda da empresa)',
+      description: 'Timeout em segundos para confirmar leitura de placa (usado quando inheritCompanyConfig = false)',
       examples: [5],
     }),
     anprConfirmationReads: z.number().int().nullable().meta({
-      description: 'Número de leituras consecutivas para confirmar placa (null = herda da empresa)',
+      description: 'Número de leituras consecutivas para confirmar placa (usado quando inheritCompanyConfig = false)',
       examples: [2],
     }),
     anprStaleAfterSeconds: z.number().int().nullable().meta({
-      description: 'Tempo em segundos para considerar observação expirada (null = herda da empresa)',
+      description: 'Tempo em segundos para considerar observação expirada (usado quando inheritCompanyConfig = false)',
       examples: [5],
     }),
     createdById: z.string().meta({

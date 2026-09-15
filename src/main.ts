@@ -37,8 +37,8 @@ async function bootstrap() {
       'ANPR',
       'Reconhecimento de placas (ANPR). O OCR é delegado a um microserviço Python (PaddleOCR) que captura o snapshot da câmera IP ou recebe a imagem em base64 e devolve a placa normalizada (Mercosul ou formato antigo).',
     )
-    .addTag('Points', 'Pontos de entrada/saída (portões, cancelheiras). Configure por ponto se o registro automático ANPR está habilitado, timeout de leitura, cooldown e outros parâmetros. Quando um campo está null, herda o valor da configuração da empresa.')
-    .addTag('Company Config', 'Configurações globais da empresa: parâmetros ANPR (confiança, timeout, cooldown), defaults de câmeras, e comportamento de movimentação. Estes valores servem como padrão; cada ponto pode sobrescrever individualmente.')
+    .addTag('Points', 'Pontos de entrada/saída (portões, cancelheiras). Cada ponto possui um campo `inheritCompanyConfig`: quando `true` (default), herda todas as configurações ANPR da empresa; quando `false`, usa os valores próprios do ponto. O campo `anprAutoRegister` ativa/desativa o registro automático de viagens (usado apenas quando inheritCompanyConfig = false).')
+    .addTag('Company Config', 'Configurações globais da empresa: parâmetros ANPR (confiança, timeout, cooldown), defaults de câmeras, e comportamento de movimentação. Estes valores são usados quando o ponto tem `inheritCompanyConfig = true` (default) ou quando um campo específico do ponto está null.')
     .addTag('Auto Registration', 'Revisão de movimentações registradas automaticamente por ANPR. Quando uma placa não é encontrada na base de dados, o sistema cria um movimento pendente de revisão. O operador corrige a placa ou cadastra o veículo e aciona o recálculo.')
     .addTag('Monitoring', 'Monitoramento em tempo real de câmeras IP: leitura contínua de placas (polling), captura de snapshots sob demanda, e streaming ao vivo (HLS/WebRTC/RTSP) via MediaMTX.')
     .addBearerAuth()

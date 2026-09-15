@@ -23,16 +23,26 @@ export class PointController {
       'Um ponto representa um local físico onde câmeras ANPR são instaladas para detectar veículos. ' +
       'Cada ponto pode ter um ou mais câmeras vinculadas. O tipo define se o ponto é de entrada, saída ou ambos.\n\n' +
       '**Configuração ANPR por ponto:**\n' +
-      'Ao criar um ponto, você pode configurar parâmetros ANPR específicos para ele. ' +
-      'Se um campo for omitido ou definido como `null`, o ponto herda o valor da configuração da empresa.\n\n' +
-      '**Campos de configuração ANPR disponíveis:**\n' +
-      '- `anprAutoRegister`: Ativa/desativa o registro automático de movimentação neste ponto\n' +
+      'O campo `inheritCompanyConfig` controla a herança de configurações:\n' +
+      '- `true` (default): O ponto herda TODAS as configurações ANPR da empresa\n' +
+      '- `false`: O ponto usa seus próprios valores dos campos ANPR abaixo\n\n' +
+      '**Campos de configuração ANPR (usados quando inheritCompanyConfig = false):**\n' +
+      '- `anprAutoRegister`: Ativa/desativa o registro automático de viagens neste ponto\n' +
       '- `anprSaveUnrecognizedPhotos`: Salva foto quando placa não é reconhecida\n' +
       '- `anprAutoRegisterCooldownSeconds`: Intervalo mínimo entre registros do mesmo veículo\n' +
       '- `anprConfidenceThreshold`: Confiança mínima para aceitar leitura (0 a 1)\n' +
       '- `anprMatchTimeoutSeconds`: Timeout para confirmar leitura de placa\n' +
       '- `anprConfirmationReads`: Número de leituras consecutivas para confirmar\n' +
       '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n\n' +
+      '**Exemplo — Criar ponto herdando config da empresa (default):**\n' +
+      '```json\n' +
+      '{\n' +
+      '  "name": "Portão Dos Fundos",\n' +
+      '  "code": "P-002",\n' +
+      '  "type": "exit",\n' +
+      '  "adminUnityId": "d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b"\n' +
+      '}\n' +
+      '```\n\n' +
       '**Exemplo — Criar ponto com config ANPR customizada:**\n' +
       '```json\n' +
       '{\n' +
@@ -40,18 +50,10 @@ export class PointController {
       '  "code": "P-001",\n' +
       '  "type": "both",\n' +
       '  "adminUnityId": "d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b",\n' +
+      '  "inheritCompanyConfig": false,\n' +
       '  "anprAutoRegister": true,\n' +
       '  "anprAutoRegisterCooldownSeconds": 60,\n' +
       '  "anprConfidenceThreshold": 0.90\n' +
-      '}\n' +
-      '```\n\n' +
-      '**Exemplo — Criar ponto herdando tudo da empresa:**\n' +
-      '```json\n' +
-      '{\n' +
-      '  "name": "Portão Dos Fundos",\n' +
-      '  "code": "P-002",\n' +
-      '  "type": "exit",\n' +
-      '  "adminUnityId": "d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b"\n' +
       '}\n' +
       '```',
   })
@@ -74,8 +76,7 @@ export class PointController {
       'Retorna todos os pontos (portões) vinculados à empresa do usuário autenticado.\n\n' +
       '**Uso no frontend:**\n' +
       'Este endpoint é útil para popular dropdowns, listagens e telas de configuração. ' +
-      'Cada ponto retornado inclui os campos de configuração ANPR (que podem ser `null` ' +
-      'indicando que herdam o valor da empresa).\n\n' +
+      'Cada ponto retornado inclui o campo `inheritCompanyConfig` e os campos de configuração ANPR.\n\n' +
       '**Campos retornados por ponto:**\n' +
       '- `id`: UUID do ponto (usar para vincular câmeras e configurar)\n' +
       '- `name`: Nome de exibição (ex: "Portão Principal")\n' +
@@ -83,9 +84,10 @@ export class PointController {
       '- `type`: `entry`, `exit` ou `both`\n' +
       '- `adminUnityId`: UUID da unidade administrativa vinculada\n' +
       '- `active`: Se o ponto está ativo\n' +
-      '- `anprAutoRegister`: Registro automático habilitado? (null = usa empresa)\n' +
-      '- `anprConfidenceThreshold`: Confiança mínima ANPR (null = usa empresa)\n' +
-      '- `anprAutoRegisterCooldownSeconds`: Cooldown entre registros (null = usa empresa)\n' +
+      '- `inheritCompanyConfig`: Se `true`, herda config ANPR da empresa\n' +
+      '- `anprAutoRegister`: Registro automático habilitado? (null quando herda)\n' +
+      '- `anprConfidenceThreshold`: Confiança mínima ANPR (null quando herda)\n' +
+      '- `anprAutoRegisterCooldownSeconds`: Cooldown entre registros (null quando herda)\n' +
       '- ... e demais campos de configuração ANPR\n\n' +
       '**Exemplo de uso no frontend:**\n' +
       '```javascript\n' +
@@ -96,7 +98,7 @@ export class PointController {
       '// Montar select/dropdown\n' +
       'points.forEach(p => {\n' +
       '  const label = `${p.name} (${p.code})`;\n' +
-      '  const autoReg = p.anprAutoRegister ?? "herda empresa";\n' +
+      '  const configSource = p.inheritCompanyConfig ? "empresa" : "ponto";\n' +
       '  // ...\n' +
       '});\n' +
       '```\n\n' +
@@ -112,22 +114,28 @@ export class PointController {
   @ApiOperation({
     summary: 'Buscar ponto por ID',
     description:
-      'Retorna os dados completos de um ponto específico, incluindo todas as configurações ANPR.\n\n' +
+      'Retorna os dados completos de um ponto específico, incluindo o campo `inheritCompanyConfig` e todas as configurações ANPR.\n\n' +
       '**Uso no frontend:**\n' +
       'Use este endpoint para carregar os dados de um ponto ao abrir tela de edição ou detalhes. ' +
-      'Os campos `anpr*` retornam o valor configurado para o ponto (ou `null` se herda da empresa).\n\n' +
+      'Se `inheritCompanyConfig` for `true`, os campos ANPR podem ser `null` (herda da empresa).\n\n' +
       '**Exemplo de uso no frontend:**\n' +
       '```javascript\n' +
       'const point = await fetch(`/point/${pointId}`, {\n' +
       '  headers: { Authorization: `Bearer ${token}` }\n' +
       '}).then(r => r.json());\n' +
       '\n' +
-      '// Exibir config ANPR (indicando se herda da empresa)\n' +
-      'const config = {\n' +
-      '  autoRegister: point.anprAutoRegister ?? companyConfig.anprAutoRegister,\n' +
-      '  cooldown: point.anprAutoRegisterCooldownSeconds ?? companyConfig.anprAutoRegisterCooldownSeconds,\n' +
-      '  confidence: point.anprConfidenceThreshold ?? companyConfig.anprConfidenceThreshold,\n' +
-      '};\n' +
+      '// Verificar fonte da configuração ANPR\n' +
+      'if (point.inheritCompanyConfig) {\n' +
+      '  // Usar valores da empresaConfig\n' +
+      '  const config = companyConfig;\n' +
+      '} else {\n' +
+      '  // Usar valores do ponto (com fallback empresa para nulls)\n' +
+      '  const config = {\n' +
+      '    autoRegister: point.anprAutoRegister ?? companyConfig.anprAutoRegister,\n' +
+      '    cooldown: point.anprAutoRegisterCooldownSeconds ?? companyConfig.anprAutoRegisterCooldownSeconds,\n' +
+      '    confidence: point.anprConfidenceThreshold ?? companyConfig.anprConfidenceThreshold,\n' +
+      '  };\n' +
+      '}\n' +
       '```',
   })
   @ApiParam({
@@ -152,25 +160,37 @@ export class PointController {
       'Se precisar alterar a unidade administrativa, crie um novo ponto.\n\n' +
       '**Configuração ANPR por ponto:**\n' +
       'Use este endpoint para personalizar os parâmetros ANPR de um ponto específico. ' +
-      'Envie apenas os campos que deseja sobrescrever. Para reverter para o padrão da empresa, ' +
-      'defina o campo como `null`.\n\n' +
-      '**Comportamento de herança:**\n' +
-      '- Campo `null` → usa o valor da configuração da empresa\n' +
-      '- Campo com valor → sobrescreve o da empresa para este ponto\n\n' +
-      '**Exemplo — Ativar auto-registration apenas neste ponto:**\n' +
+      'Envie apenas os campos que deseja alterar.\n\n' +
+      '**Campo `inheritCompanyConfig`:**\n' +
+      '- `true`: O ponto herda TODAS as configurações ANPR da empresa (ignora campos ANPR)\n' +
+      '- `false`: O ponto usa seus próprios valores dos campos ANPR\n\n' +
+      '**Campos ANPR (usados quando inheritCompanyConfig = false):**\n' +
+      '- `anprAutoRegister`: Ativa/desativa o registro automático de viagens\n' +
+      '- `anprSaveUnrecognizedPhotos`: Salva foto quando placa não é reconhecida\n' +
+      '- `anprAutoRegisterCooldownSeconds`: Intervalo mínimo entre registros do mesmo veículo\n' +
+      '- `anprConfidenceThreshold`: Confiança mínima para aceitar leitura (0 a 1)\n' +
+      '- `anprMatchTimeoutSeconds`: Timeout para confirmar leitura de placa\n' +
+      '- `anprConfirmationReads`: Número de leituras consecutivas para confirmar\n' +
+      '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n\n' +
+      '**Exemplo — Ativar herança de config da empresa:**\n' +
       '```json\n' +
-      '{ "anprAutoRegister": true }\n' +
+      '{ "inheritCompanyConfig": true }\n' +
       '```\n\n' +
-      '**Exemplo — Customizar cooldown e confiança:**\n' +
+      '**Exemplo — Desativar herança e customizar config:**\n' +
       '```json\n' +
       '{\n' +
+      '  "inheritCompanyConfig": false,\n' +
+      '  "anprAutoRegister": true,\n' +
       '  "anprAutoRegisterCooldownSeconds": 120,\n' +
       '  "anprConfidenceThreshold": 0.95\n' +
       '}\n' +
       '```\n\n' +
-      '**Exemplo — Reverter campo para o padrão da empresa:**\n' +
+      '**Exemplo — Ativar auto-registration apenas neste ponto (herdando outros params da empresa):**\n' +
       '```json\n' +
-      '{ "anprAutoRegisterCooldownSeconds": null }\n' +
+      '{\n' +
+      '  "inheritCompanyConfig": false,\n' +
+      '  "anprAutoRegister": true\n' +
+      '}\n' +
       '```\n\n' +
       '**Exemplo — Desativar auto-registration neste ponto:**\n' +
       '```json\n' +

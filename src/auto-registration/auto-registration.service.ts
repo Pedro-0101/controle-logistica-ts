@@ -151,6 +151,17 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
   }
 
   private resolveAnprConfig(companyConfig: any, point: any): ResolvedAnprConfig {
+    if (point.inheritCompanyConfig) {
+      return {
+        anprAutoRegister: companyConfig.anprAutoRegister,
+        anprSaveUnrecognizedPhotos: companyConfig.anprSaveUnrecognizedPhotos,
+        anprAutoRegisterCooldownSeconds: companyConfig.anprAutoRegisterCooldownSeconds,
+        anprConfidenceThreshold: companyConfig.anprConfidenceThreshold,
+        anprMatchTimeoutSeconds: companyConfig.anprMatchTimeoutSeconds,
+        anprConfirmationReads: companyConfig.anprConfirmationReads,
+        anprStaleAfterSeconds: companyConfig.anprStaleAfterSeconds,
+      };
+    }
     return {
       anprAutoRegister: point.anprAutoRegister ?? companyConfig.anprAutoRegister,
       anprSaveUnrecognizedPhotos: point.anprSaveUnrecognizedPhotos ?? companyConfig.anprSaveUnrecognizedPhotos,
