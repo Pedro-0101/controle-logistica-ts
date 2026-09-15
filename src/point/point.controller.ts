@@ -147,10 +147,9 @@ export class PointController {
     summary: 'Atualizar ponto (parcial)',
     description:
       'Atualiza parcialmente os dados de um ponto existente. Apenas os campos enviados são alterados.\n\n' +
-      '**Campos fixos (não alteráveis):**\n' +
+      '**Campo fixo (não alterável):**\n' +
       '- `adminUnityId`: Unidade administrativa vinculada ao ponto\n' +
-      '- `type`: Tipo do ponto (entry/exit/both)\n' +
-      'Se precisar alterar esses campos, crie um novo ponto.\n\n' +
+      'Se precisar alterar a unidade administrativa, crie um novo ponto.\n\n' +
       '**Configuração ANPR por ponto:**\n' +
       'Use este endpoint para personalizar os parâmetros ANPR de um ponto específico. ' +
       'Envie apenas os campos que deseja sobrescrever. Para reverter para o padrão da empresa, ' +
@@ -188,7 +187,7 @@ export class PointController {
     example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
   })
   @ZodResponse({ status: 200, type: PointResponseDto })
-  @ApiResponse({ status: 400, description: 'Dados de entrada inválidos ou tentativa de alterar campos fixos (adminUnityId, type)' })
+  @ApiResponse({ status: 400, description: 'Dados de entrada inválidos ou tentativa de alterar campo fixo (adminUnityId)' })
   @ApiResponse({ status: 401, description: 'Token JWT ausente ou inválido. Faça login via POST /auth/login' })
   @ApiResponse({ status: 403, description: 'Usuário não possui permissão de admin na empresa' })
   @ApiResponse({ status: 404, description: 'Ponto não encontrado ou não pertence à empresa do usuário' })

@@ -53,9 +53,8 @@ export class PointService {
 
   async update(id: string, updatePointDto: UpdatePointDto, actor: Actor) {
     const point = await this.findOne(id, actor);
-    if ((updatePointDto.adminUnityId !== undefined && updatePointDto.adminUnityId !== point.adminUnityId) ||
-        (updatePointDto.type !== undefined && updatePointDto.type !== point.type)) {
-      throw new BadRequestException('Unidade e sentido do ponto são fixos; cadastre outro ponto para alterar o contexto');
+    if (updatePointDto.adminUnityId !== undefined && updatePointDto.adminUnityId !== point.adminUnityId) {
+      throw new BadRequestException('Unidade administrativa é fixa; cadastre outro ponto para alterar o contexto');
     }
     await this.validateUnity(point.adminUnityId, point.companyId);
     Object.assign(point, updatePointDto, { updatedById: actor.userId });
