@@ -44,6 +44,16 @@ class HealthOut(BaseModel):
     status: str = "ok"
 
 
+class StatsOut(BaseModel):
+    count: int = Field(..., description="Total de imagens com placa reconhecida")
+    avg_ms: float = Field(..., description="Tempo médio de inferência (ms)")
+    min_ms: float = Field(..., description="Menor tempo de inferência (ms)")
+    max_ms: float = Field(..., description="Maior tempo de inferência (ms)")
+    p50_ms: float = Field(..., description="Mediana do tempo de inferência (ms)")
+    p95_ms: float = Field(..., description="Percentil 95 do tempo de inferência (ms)")
+    window_count: int = Field(..., description="Amostras na janela deslizante")
+
+
 class MonitorIn(ReconhecerCameraIn):
     interval_seconds: float = Field(1, ge=0.1, le=3600)
     stale_after_seconds: float = Field(5, ge=0.2, le=3600)

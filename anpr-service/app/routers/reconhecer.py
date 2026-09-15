@@ -11,6 +11,7 @@ from ..schemas import (
     ReconhecerCameraIn,
     ReconhecerCameraOut,
     ReconhecerImagemIn,
+    StatsOut,
 )
 from ..services.camera import CameraConfig, capturar_snapshot
 from ..services.erros import (
@@ -117,4 +118,14 @@ async def reconhecer_imagem(body: ReconhecerImagemIn, request: Request) -> Placa
         raw=melhor.raw,
         box=list(melhor.box) if melhor.box else None,
     )
+
+
+@router.get(
+    "/stats",
+    response_model=StatsOut,
+    summary="Estatísticas de tempo de inferência (somente imagens com placa reconhecida)",
+)
+async def inference_stats(request: Request) -> StatsOut:
+    """Retorna métricas de tempo de inferência (YOLO + PaddleOCR) para imagens que tiveram placa reconhecida."""
+    return StatsOut(**request.app.state.stats.snapshot())
 

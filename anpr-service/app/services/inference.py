@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import HTTPException
 from ..anpr.recognizer import get_recognizer
 from ..config import settings
+from .stats import InferenceStats
 
 
 class InferenceScheduler:
@@ -17,6 +18,7 @@ class InferenceScheduler:
         self.worker = None
         self.manual_count = 0
         self.closed = False
+        self.stats = InferenceStats()
 
     def start(self):
         self.worker = asyncio.create_task(self._run())
@@ -66,8 +68,12 @@ class InferenceScheduler:
                 continue
             result, error = None, None
             try:
+                start = time.perf_counter()
                 result = await asyncio.get_running_loop().run_in_executor(
                     self.pool, self._infer, image, fallback)
+                elapsed = time.perf_counter() - start
+                if result is not None:
+                    self.stats.record(elapsed)
             except Exception as exc:
                 error = exc
             callback(result, error)

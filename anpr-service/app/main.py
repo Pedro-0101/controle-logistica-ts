@@ -20,6 +20,7 @@ async def lifespan(app):
     scheduler = InferenceScheduler()
     scheduler.start()
     app.state.inference = scheduler
+    app.state.stats = scheduler.stats
     app.state.monitors = monitors.MonitorManager(scheduler)
     try:
         if settings.anpr_warmup:
