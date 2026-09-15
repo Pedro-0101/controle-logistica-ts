@@ -1,7 +1,9 @@
 """Rotas de reconhecimento de placa (câmera IP ou imagem enviada)."""
-
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
+
+logger = logging.getLogger("anpr")
 
 from ..schemas import (
     HealthOut,
@@ -62,8 +64,14 @@ async def reconhecer_camera(body: ReconhecerCameraIn, request: Request) -> Recon
 
     melhor = await request.app.state.inference.recognize(imagem)
     if melhor is None:
+        logger.info("[reconhecer-camera] Nenhuma placa detectada na imagem da camera")
         raise HTTPException(422, "Placa não reconhecida na imagem")
     foto_path = salvar(conteudo)
+
+    logger.info(
+        "[reconhecer-camera] Placa reconhecida: %s | formato=%s | confianca=%.2f | camera_url=%s",
+        melhor.placa.valor, melhor.placa.formato, melhor.confianca, url_encontrada,
+    )
 
     return ReconhecerCameraOut(
         placa=melhor.placa.valor,
@@ -94,7 +102,13 @@ async def reconhecer_imagem(body: ReconhecerImagemIn, request: Request) -> Placa
 
     melhor = await request.app.state.inference.recognize(imagem)
     if melhor is None:
+        logger.info("[reconhecer-imagem] Nenhuma placa detectada na imagem")
         raise HTTPException(422, "Placa não reconhecida na imagem")
+
+    logger.info(
+        "[reconhecer-imagem] Placa reconhecida: %s | formato=%s | confianca=%.2f",
+        melhor.placa.valor, melhor.placa.formato, melhor.confianca,
+    )
 
     return PlacaOut(
         placa=melhor.placa.valor,

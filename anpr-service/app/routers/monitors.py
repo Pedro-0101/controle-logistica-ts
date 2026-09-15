@@ -1,5 +1,6 @@
 """Continuous capture with expiring observations; no database or credentials in responses."""
 import asyncio
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -10,6 +11,8 @@ from ..schemas import MonitorIn
 from ..config import settings
 from ..services.camera import CameraConfig, SnapshotClient
 from ..services.imagem import decodificar
+
+logger = logging.getLogger("anpr")
 
 router = APIRouter(tags=["monitors"])
 
@@ -58,6 +61,7 @@ class CameraMonitor:
         if time.monotonic() - monotonic >= self.config.stale_after_seconds:
             return
         if error:
+            logger.warning("[monitor:%s] Erro na captura: %s", self.camera_id, error)
             self.invalidate("offline")
             return
         if result is None:
@@ -69,6 +73,11 @@ class CameraMonitor:
             return
         plate = result.placa.valor
         if plate != self.plate:
+            logger.info(
+                "[monitor:%s] Nova placa detectada: %s (confianca=%.2f) | Leituras: %d/%d",
+                self.camera_id, plate, float(result.confianca),
+                self.reads + 1, self.config.confirmation_reads,
+            )
             self.invalidate("candidate")
             self.observation_id = str(uuid4())
             self.plate = plate
@@ -79,6 +88,12 @@ class CameraMonitor:
         self.confidence = float(result.confianca)
         self.box = list(result.box) if result.box else None
         if self.reads >= self.config.confirmation_reads or self.status == "confirmed":
+            if self.status != "confirmed":
+                logger.info(
+                    "[monitor:%s] *** PLACA CONFIRMADA: %s (confianca=%.2f) | Leituras: %d/%d | observation_id=%s",
+                    self.camera_id, plate, self.confidence,
+                    self.reads, self.config.confirmation_reads, self.observation_id,
+                )
             self.status = "confirmed"
         else:
             self.status = "candidate"

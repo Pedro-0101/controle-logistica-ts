@@ -121,10 +121,10 @@ export class CompanyConfig {
 
   @ApiProperty({
     description: 'Habilitar registro automático de movimentação por ANPR',
-    example: false,
-    default: false,
+    example: true,
+    default: true,
   })
-  @Column({ default: false })
+  @Column({ default: true })
   anprAutoRegister: boolean;
 
   @ApiProperty({

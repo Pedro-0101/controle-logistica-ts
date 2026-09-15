@@ -67,6 +67,9 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
   private async process() {
     const confirmed = await this.monitoring.getConfirmedObservations();
+    if (confirmed.length > 0) {
+      this.logger.debug(`[auto-reg] ${confirmed.length} observacao(oes) confirmada(s) para processar`);
+    }
     for (const { camera, observation } of confirmed) {
       if (this.stopped) return;
       if (this.processed.has(observation.observationId!)) continue;
@@ -87,6 +90,11 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
   private async processObservation(camera: Camera, state: CurrentObservation) {
     const companyId = camera.companyId;
+    this.logger.log(
+      `[auto-reg] Processando observacao: placa=${state.placa} camera=${camera.id} ` +
+      `observationId=${state.observationId} confianca=${state.confianca}`,
+    );
+
     let companyConfig;
     try {
       companyConfig = await this.companyConfigService.findOne(companyId, {
@@ -108,12 +116,27 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
     const resolved = this.resolveAnprConfig(companyConfig, point);
 
-    if (!resolved.anprAutoRegister) return;
+    this.logger.debug(
+      `[auto-reg] Config resolved para camera ${camera.id}: ` +
+      `autoRegister=${resolved.anprAutoRegister} ` +
+      `confidenceThreshold=${resolved.anprConfidenceThreshold} ` +
+      `cooldown=${resolved.anprAutoRegisterCooldownSeconds}s ` +
+      `confirmationReads=${resolved.anprConfirmationReads} ` +
+      `inheritCompanyConfig=${point.inheritCompanyConfig}`,
+    );
+
+    if (!resolved.anprAutoRegister) {
+      this.logger.debug(`[auto-reg] Auto-registro desabilitado para camera ${camera.id}`);
+      return;
+    }
 
     const observation = await this.monitoring.ensureObservationPersisted(camera, state);
 
     const existingMovement = await this.movementService.findExistingByObservation(observation.id, companyId);
-    if (existingMovement) return;
+    if (existingMovement) {
+      this.logger.debug(`[auto-reg] Movimento ja existe para observacao ${observation.id}`);
+      return;
+    }
 
     if (resolved.anprAutoRegisterCooldownSeconds > 0) {
       const vehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
@@ -122,7 +145,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
           vehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
         );
         if (hasRecent) {
-          this.logger.debug(`Cooldown active for vehicle ${vehicle.id} at point ${camera.pointId}`);
+          this.logger.debug(`[auto-reg] Cooldown ativo para veiculo ${vehicle.id} placa=${state.placa} no ponto ${camera.pointId}`);
           return;
         }
       }
@@ -145,8 +168,11 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     });
 
     this.logger.log(
-      `Auto-registered movement: plate=${state.placa!} camera=${camera.id} ` +
-      `vehicle=${vehicle ? 'found' : 'NOT FOUND'} → ${vehicle ? 'open' : 'pending_review'}`,
+      `[auto-reg] *** REGISTRO AUTOMATICO: placa=${state.placa!} ` +
+      `camera=${camera.id} ponto=${camera.pointId} ` +
+      `veiculo=${vehicle ? `encontrado (id=${vehicle.id})` : 'NAO ENCONTRADO'} ` +
+      `→ status=${vehicle ? 'open' : 'pending_review'} ` +
+      `confianca=${state.confianca} observationId=${state.observationId}`,
     );
   }
 

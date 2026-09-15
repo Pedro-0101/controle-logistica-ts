@@ -1,10 +1,18 @@
 """ANPR HTTP application and single-owner background monitor lifecycle."""
+import logging
 from contextlib import asynccontextmanager
 import numpy as np
 from fastapi import FastAPI
 from .config import settings
 from .routers import reconhecer, monitors
 from .services.inference import InferenceScheduler
+
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
+logging.getLogger("anpr").setLevel(logging.INFO)
 
 
 @asynccontextmanager
