@@ -18,9 +18,10 @@ export class AppController {
   @Get('stats')
   @ApiOperation({
     summary: 'Estatísticas do sistema',
-    description: 'Retorna informações sobre o estado atual do servidor, como uptime, memória e versão do Node.',
+    description: 'Retorna dados de monitoramento ANPR: monitores ativos, observações confirmadas com placa, confiança e status.',
   })
   @ApiResponse({ status: 200, description: 'Estatísticas do sistema retornadas com sucesso' })
+  @ApiResponse({ status: 502, description: 'Serviço ANPR indisponível' })
   getStats() {
     return this.appService.getStats();
   }
