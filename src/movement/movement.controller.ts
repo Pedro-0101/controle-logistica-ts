@@ -10,6 +10,7 @@ import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
 import { FindMovementsDto } from './dto/find-movements.schema.js';
 import { PaginatedMovementsResponseDto } from './dto/movement-list-response.schema.js';
+import { PendingReviewMovementDto } from '../auto-registration/dto/pending-review-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -112,6 +113,54 @@ export class MovementController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.movementService.findAll(user, filters);
+  }
+
+  @Get('pending-review')
+  @ApiOperation({
+    summary: 'Listar movimentos pendentes de revisão',
+    description:
+      'Retorna movimentos criados automaticamente onde a placa não foi encontrada na base de dados.\n\n' +
+      '**Cada item do array contém:**\n' +
+      '- `id`: UUID do movimento (usar no endpoint de recálculo)\n' +
+      '- `recognizedPlate`: Placa que o OCR leu (pode conter erros de leitura)\n' +
+      '- `photoPath`: Caminho local da foto de evidência (null se não salva)\n' +
+      '- `dateTime`: Data/hora ISO 8601 em que o veículo passou na câmera\n' +
+      '- `type`: `entry` (entrada) ou `exit` (saída)\n' +
+      '- `pointId`: UUID do ponto/portão da câmera\n' +
+      '- `observationId`: UUID da observação ANPR (para buscar evidência via Python)\n\n' +
+      '**Importante:** esta rota é estática e precisa ser declarada antes de `GET /movement/:id` ' +
+      'para não ser capturada pelo parâmetro dinâmico.',
+  })
+  @ZodResponse({ status: 200, type: [PendingReviewMovementDto] })
+  @ApiResponse({
+    status: 401,
+    description: 'Token JWT ausente ou inválido. Faça login via POST /auth/login',
+  })
+  async findPendingReview(@CurrentUser() user: AuthenticatedUser) {
+    const movements = await this.movementService.findPendingReview(user);
+    return Promise.all(
+      movements.map(async (m) => {
+        let photoPath: string | null = null;
+        if (m.observationId) {
+          const obs = await this.movementService.findObservationPhotoPath(m.observationId);
+          photoPath = obs?.photoPath ?? null;
+        }
+        return {
+          id: m.id,
+          observationId: m.observationId,
+          pointId: m.pointId,
+          vehicleId: m.vehicleId,
+          recognizedPlate: m.recognizedPlate,
+          type: m.type,
+          dateTime: m.dateTime.toISOString(),
+          status: m.status,
+          companyId: m.companyId,
+          autoRegistered: m.autoRegistered,
+          photoPath,
+          createdAt: m.createdAt.toISOString(),
+        };
+      }),
+    );
   }
 
   @Get(':id')

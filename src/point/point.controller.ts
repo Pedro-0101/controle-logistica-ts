@@ -33,7 +33,12 @@ export class PointController {
       '- `anprConfidenceThreshold`: Confiança mínima para aceitar leitura (0 a 1)\n' +
       '- `anprMatchTimeoutSeconds`: Timeout para confirmar leitura de placa\n' +
       '- `anprConfirmationReads`: Número de leituras consecutivas para confirmar\n' +
-      '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n\n' +
+      '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n' +
+      '- `anprRecognitionMode`: `local` | `verified` | `external` (modo de reconhecimento neste ponto)\n' +
+      '- `anprExternalProvider`: Provider externo (`google_vision`)\n' +
+      '- `anprExternalMinConfidence`: Confiança mínima para aceitar a placa da API externa (0 a 1)\n' +
+      '- `anprExternalTimeoutMs`: Timeout em milissegundos da API externa\n' +
+      '- `anprExternalFallbackToLocal`: Usar leitura local quando a API externa falhar\n\n' +
       '**Exemplo — Criar ponto herdando config da empresa (default):**\n' +
       '```json\n' +
       '{\n' +
@@ -171,7 +176,14 @@ export class PointController {
       '- `anprConfidenceThreshold`: Confiança mínima para aceitar leitura (0 a 1)\n' +
       '- `anprMatchTimeoutSeconds`: Timeout para confirmar leitura de placa\n' +
       '- `anprConfirmationReads`: Número de leituras consecutivas para confirmar\n' +
-      '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n\n' +
+      '- `anprStaleAfterSeconds`: Tempo para considerar observação expirada\n' +
+      '- `anprRecognitionMode`: `local` | `verified` | `external` (modo de reconhecimento neste ponto)\n' +
+      '- `anprExternalProvider`: Provider externo (`google_vision`)\n' +
+      '- `anprExternalMinConfidence`: Confiança mínima para aceitar a placa da API externa (0 a 1)\n' +
+      '- `anprExternalTimeoutMs`: Timeout em milissegundos da API externa\n' +
+      '- `anprExternalFallbackToLocal`: Usar leitura local quando a API externa falhar\n' +
+      '> Envie `null` em um campo ANPR para voltar a herdar o valor da empresa naquele campo.\n' +
+      '> As credenciais da API externa são globais (variáveis de ambiente), não por ponto.\n\n' +
       '**Exemplo — Ativar herança de config da empresa:**\n' +
       '```json\n' +
       '{ "inheritCompanyConfig": true }\n' +
@@ -195,6 +207,15 @@ export class PointController {
       '**Exemplo — Desativar auto-registration neste ponto:**\n' +
       '```json\n' +
       '{ "anprAutoRegister": false }\n' +
+      '```\n\n' +
+      '**Exemplo — Exigir API externa de reconhecimento apenas neste ponto:**\n' +
+      '```json\n' +
+      '{\n' +
+      '  "inheritCompanyConfig": false,\n' +
+      '  "anprRecognitionMode": "verified",\n' +
+      '  "anprExternalProvider": "google_vision",\n' +
+      '  "anprExternalMinConfidence": 0.75\n' +
+      '}\n' +
       '```\n\n' +
       '**Exemplo — Atualizar dados básicos:**\n' +
       '```json\n' +

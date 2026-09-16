@@ -127,6 +127,22 @@ export class Movement {
   autoRegistered: boolean;
 
   @ApiProperty({
+    description: 'Provider que forneceu a placa final do movimento (local, google_vision, etc.)',
+    example: 'google_vision',
+    required: false,
+  })
+  @Column({ type: 'varchar', nullable: true })
+  recognitionProvider: string | null;
+
+  @ApiProperty({
+    description: 'Confiança da leitura que originou a placa final (0-1)',
+    example: 0.95,
+    required: false,
+  })
+  @Column({ type: 'double precision', nullable: true })
+  recognitionConfidence: number | null;
+
+  @ApiProperty({
     description: 'Data e hora do último recálculo do movimento',
     example: '2026-08-29T12:00:00.000Z',
     required: false,

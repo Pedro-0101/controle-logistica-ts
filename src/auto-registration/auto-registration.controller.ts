@@ -1,10 +1,9 @@
-import { Controller, Get, Post, Param, Body, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Param, Body, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
-import { ZodValidationPipe, ZodResponse } from 'zod-nest';
+import { ZodValidationPipe } from 'zod-nest';
 import { AutoRegistrationService } from './auto-registration.service.js';
 import { MovementService } from '../movement/movement.service.js';
 import { RecalculateMovementDto } from './dto/recalculate-movement.schema.js';
-import { PendingReviewMovementDto } from './dto/pending-review-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 
@@ -57,103 +56,6 @@ export class AutoRegistrationController {
     private readonly autoRegistration: AutoRegistrationService,
     private readonly movementService: MovementService,
   ) {}
-
-  /**
-   * ### GET /movement/pending-review
-   *
-   * Retorna todos os movimentos com status `pending_review` — ou seja,
-   * movimentos onde o ANPR leu uma placa que **não foi encontrada** na base de dados de veículos.
-   *
-   * **Quando usar:** Para exibir ao operador/porteiro a lista de veículos não reconhecidos
-   * que precisam de intervenção manual (corrigir placa ou cadastrar veículo).
-   *
-   * **O que retorna:**
-   * - `id`: UUID do movimento (usar no recálculo)
-   * - `recognizedPlate`: Placa que o OCR leu (pode ter erros de leitura)
-   * - `photoPath`: Caminho da foto de evidência (se `anprSaveUnrecognizedPhotos` está ativo)
-   *   - A foto pode ser acessada via `GET /anpr/monitors/:cameraId/observations/:observationId/image`
-   *   - Ou servida pelo backend se o path for local
-   * - `dateTime`: Data/hora em que o veículo passou na câmera
-   * - `type`: Entrada (`entry`) ou saída (`exit`)
-   * - `pointId`: ID do ponto (portão) onde está a câmera
-   * - `observationId`: ID da observação ANPR (para referência)
-   *
-   * **Comportamento:**
-   * - Retorna array vazio `[]` se não houver pendências
-   * - Ordenado por data/hora decrescente (mais recente primeiro)
-   * - Apenas movimentos da empresa do usuário autenticado
-   *
-   * **Exemplo de uso no frontend:**
-   * ```javascript
-   * const pending = await fetch('/movement/pending-review', {
-   *   headers: { Authorization: `Bearer ${token}` }
-   * });
-   * const movements = await pending.json();
-   *
-   * // Exibir cada movimento com:
-   * // - Placa reconhecida (recognizedPlate)
-   * // - Foto (photoPath ou URL de evidência)
-   * // - Botão "Corrigir Placa" → abre modal para editar
-   * // - Botão "Cadastrar Veículo" → abre formulário de cadastro
-   * // - Botão "Recalcular" → chama POST /movement/:id/recalculate
-   * ```
-   */
-  @Get('pending-review')
-  @ApiOperation({
-    summary: 'Listar movimentos pendentes de revisão',
-    description:
-      'Retorna movimentos criados automaticamente onde a placa não foi encontrada na base de dados.\n\n' +
-      '**Fluxo de uso pelo frontend:**\n' +
-      '1. Sistema ANPR detecta placa não cadastrada → movimento `pending_review` é criado automaticamente\n' +
-      '2. Front chama `GET /movement/pending-review` periodicamente ou ao acessar a tela de monitoramento\n' +
-      '3. Exibe a lista para o operador com: placa reconhecida, foto, data/hora, tipo (entrada/saída)\n' +
-      '4. Operador corrige a placa ou cadastra o veículo\n' +
-      '5. Front chama `POST /movement/:id/recalculate` com a placa correta ou vehicleId\n\n' +
-      '**Retorno:** Array de movimentos pendentes (pode ser vazio `[]`)\n\n' +
-      '**Cada item do array contém:**\n' +
-      '- `id`: UUID do movimento (usar no endpoint de recálculo)\n' +
-      '- `recognizedPlate`: Placa que o OCR leu (pode conter erros de leitura)\n' +
-      '- `photoPath`: Caminho local da foto de evidência (null se não salva)\n' +
-      '- `dateTime`: Data/hora ISO 8601 em que o veículo passou na câmera\n' +
-      '- `type`: `entry` (entrada) ou `exit` (saída)\n' +
-      '- `pointId`: UUID do ponto/portão da câmera\n' +
-      '- `observationId`: UUID da observação ANPR (para buscar evidência via Python)\n\n' +
-      '**Para acessar a foto de evidência:**\n' +
-      'Use `GET /anpr/monitors/:cameraId/observations/:observationId/image` (proxy do Python)\n' +
-      'O `cameraId` pode ser obtido consultando a câmera vinculada ao `pointId`.',
-  })
-  @ZodResponse({ status: 200, type: [PendingReviewMovementDto] })
-  @ApiResponse({
-    status: 401,
-    description: 'Token JWT ausente ou inválido. Faça login via POST /auth/login',
-  })
-  async findPendingReview(@CurrentUser() user: AuthenticatedUser) {
-    const movements = await this.movementService.findPendingReview(user);
-    const result = await Promise.all(
-      movements.map(async (m) => {
-        let photoPath: string | null = null;
-        if (m.observationId) {
-          const obs = await this.movementService.findObservationPhotoPath(m.observationId);
-          photoPath = obs?.photoPath ?? null;
-        }
-        return {
-          id: m.id,
-          observationId: m.observationId,
-          pointId: m.pointId,
-          vehicleId: m.vehicleId,
-          recognizedPlate: m.recognizedPlate,
-          type: m.type,
-          dateTime: m.dateTime.toISOString(),
-          status: m.status,
-          companyId: m.companyId,
-          autoRegistered: m.autoRegistered,
-          photoPath,
-          createdAt: m.createdAt.toISOString(),
-        };
-      }),
-    );
-    return result;
-  }
 
   /**
    * ### POST /movement/:id/recalculate

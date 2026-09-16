@@ -296,8 +296,13 @@ export class MovementService {
     recognizedPlate: string;
     companyId: string;
     systemUserId: string;
+    recognitionProvider?: string | null;
+    recognitionConfidence?: number | null;
   }): Promise<Movement> {
-    const { observation, vehicle, recognizedPlate, companyId, systemUserId } = params;
+    const {
+      observation, vehicle, recognizedPlate, companyId, systemUserId,
+      recognitionProvider, recognitionConfidence,
+    } = params;
 
     return this.dataSource.transaction(async (manager) => {
       const existing = await manager.getRepository(Movement).findOneBy({ observationId: observation.id, companyId });
@@ -317,6 +322,8 @@ export class MovementService {
         status: vehicle ? 'open' : 'pending_review',
         recognizedPlate,
         autoRegistered: true,
+        recognitionProvider: recognitionProvider ?? null,
+        recognitionConfidence: recognitionConfidence ?? null,
         companyId,
         createdById: systemUserId,
       });

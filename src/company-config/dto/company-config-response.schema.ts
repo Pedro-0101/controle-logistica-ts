@@ -63,6 +63,26 @@ export const companyConfigResponseSchema = z
       description: 'Intervalo mínimo em segundos entre movimentos automáticos do mesmo veículo no mesmo ponto. Evita registros duplicados.',
       examples: [30],
     }),
+    anprRecognitionMode: z.enum(['local', 'verified', 'external']).meta({
+      description: 'Modo de reconhecimento: local, verified ou external.',
+      examples: ['verified'],
+    }),
+    anprExternalProvider: z.enum(['google_vision']).meta({
+      description: 'Provider externo de reconhecimento de placas.',
+      examples: ['google_vision'],
+    }),
+    anprExternalMinConfidence: z.number().meta({
+      description: 'Confiança mínima (0-1) para aceitar a placa retornada pela API externa.',
+      examples: [0.7],
+    }),
+    anprExternalTimeoutMs: z.number().int().meta({
+      description: 'Timeout em milissegundos para a chamada à API externa.',
+      examples: [8000],
+    }),
+    anprExternalFallbackToLocal: z.boolean().meta({
+      description: 'Usar leitura local quando a API externa não retornar placa válida.',
+      examples: [true],
+    }),
     movementAutoCloseMinutes: z.number().int().meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],

@@ -68,6 +68,31 @@ export const createCompanyConfigSchema = z
       examples: [30],
       default: 30,
     }),
+    anprRecognitionMode: z.enum(['local', 'verified', 'external']).default('local').meta({
+      description: 'Modo de reconhecimento: local (apenas OCR local), verified (OCR local + verificação em API externa; a placa externa vence quando válida) ou external (a API externa é autoritativa).',
+      examples: ['verified'],
+      default: 'local',
+    }),
+    anprExternalProvider: z.enum(['google_vision']).default('google_vision').meta({
+      description: 'Provider externo de reconhecimento de placas. As credenciais são lidas de variáveis de ambiente.',
+      examples: ['google_vision'],
+      default: 'google_vision',
+    }),
+    anprExternalMinConfidence: z.number().min(0).max(1).default(0.7).meta({
+      description: 'Confiança mínima (0-1) para aceitar a placa retornada pela API externa.',
+      examples: [0.7],
+      default: 0.7,
+    }),
+    anprExternalTimeoutMs: z.number().int().min(100).default(8000).meta({
+      description: 'Timeout em milissegundos para a chamada à API externa.',
+      examples: [8000],
+      default: 8000,
+    }),
+    anprExternalFallbackToLocal: z.boolean().default(true).meta({
+      description: 'Quando true e a API externa não retornar placa válida, usa a leitura local. Quando false (modo external), o movimento não é criado.',
+      examples: [true],
+      default: true,
+    }),
     movementAutoCloseMinutes: z.number().int().default(60).meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],

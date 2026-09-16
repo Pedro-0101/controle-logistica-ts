@@ -12,6 +12,8 @@ import { Company } from '../../company/entities/company.entity.js';
 
 const enumProtocols = ['http', 'https'];
 const enumAuthTypes = ['digest', 'basic'];
+const enumRecognitionModes = ['local', 'verified', 'external'];
+const enumExternalProviders = ['google_vision'];
 
 @Entity('company_configs')
 export class CompanyConfig {
@@ -142,6 +144,52 @@ export class CompanyConfig {
   })
   @Column({ default: 30 })
   anprAutoRegisterCooldownSeconds: number;
+
+  // ── ANPR — modo de reconhecimento / API externa ──
+
+  @ApiProperty({
+    description:
+      'Modo de reconhecimento ANPR: local (apenas OCR local), verified (OCR local + verificação em API externa; a placa externa vence quando válida) ou external (a API externa é autoritativa)',
+    example: 'local',
+    enum: enumRecognitionModes,
+    default: 'local',
+  })
+  @Column({ default: 'local', enum: enumRecognitionModes })
+  anprRecognitionMode: string;
+
+  @ApiProperty({
+    description: 'Provider externo de reconhecimento de placas (credenciais via variáveis de ambiente)',
+    example: 'google_vision',
+    enum: enumExternalProviders,
+    default: 'google_vision',
+  })
+  @Column({ default: 'google_vision', enum: enumExternalProviders })
+  anprExternalProvider: string;
+
+  @ApiProperty({
+    description: 'Confiança mínima (0-1) para aceitar a placa retornada pela API externa',
+    example: 0.7,
+    default: 0.7,
+  })
+  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0.7 })
+  anprExternalMinConfidence: number;
+
+  @ApiProperty({
+    description: 'Timeout em milissegundos para a chamada à API externa',
+    example: 8000,
+    default: 8000,
+  })
+  @Column({ default: 8000 })
+  anprExternalTimeoutMs: number;
+
+  @ApiProperty({
+    description:
+      'Quando true e a API externa não retornar placa válida, usa a leitura local. Quando false (modo external), o movimento não é criado.',
+    example: true,
+    default: true,
+  })
+  @Column({ default: true })
+  anprExternalFallbackToLocal: boolean;
 
   // ── Movimentação ──
 

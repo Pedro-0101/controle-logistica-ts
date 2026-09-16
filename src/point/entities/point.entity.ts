@@ -142,6 +142,51 @@ export class Point {
   anprStaleAfterSeconds: number | null;
 
   @ApiProperty({
+    description: 'Modo de reconhecimento ANPR neste ponto: local, verified ou external (usado quando inheritCompanyConfig = false)',
+    example: 'local',
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'varchar', nullable: true, default: null })
+  anprRecognitionMode: string | null;
+
+  @ApiProperty({
+    description: 'Provider externo de reconhecimento de placas neste ponto (usado quando inheritCompanyConfig = false)',
+    example: 'google_vision',
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'varchar', nullable: true, default: null })
+  anprExternalProvider: string | null;
+
+  @ApiProperty({
+    description: 'Confiança mínima para aceitar a placa da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+    example: 0.7,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true, default: null })
+  anprExternalMinConfidence: number | null;
+
+  @ApiProperty({
+    description: 'Timeout em milissegundos da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+    example: 8000,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'int', nullable: true, default: null })
+  anprExternalTimeoutMs: number | null;
+
+  @ApiProperty({
+    description: 'Usar leitura local quando a API externa falhar neste ponto (usado quando inheritCompanyConfig = false)',
+    example: true,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'boolean', nullable: true, default: null })
+  anprExternalFallbackToLocal: boolean | null;
+
+  @ApiProperty({
     description: 'ID do usuário que criou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })

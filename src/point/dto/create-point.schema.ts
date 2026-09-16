@@ -65,6 +65,31 @@ export const createPointSchema = z
       examples: [5],
       default: null,
     }),
+    anprRecognitionMode: z.enum(['local', 'verified', 'external']).nullable().default(null).optional().meta({
+      description: 'Modo de reconhecimento ANPR neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: ['verified'],
+      default: null,
+    }),
+    anprExternalProvider: z.enum(['google_vision']).nullable().default(null).optional().meta({
+      description: 'Provider externo de reconhecimento de placas neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: ['google_vision'],
+      default: null,
+    }),
+    anprExternalMinConfidence: z.number().min(0).max(1).nullable().default(null).optional().meta({
+      description: 'Confiança mínima para aceitar a placa da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [0.7],
+      default: null,
+    }),
+    anprExternalTimeoutMs: z.number().int().min(100).nullable().default(null).optional().meta({
+      description: 'Timeout em milissegundos da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [8000],
+      default: null,
+    }),
+    anprExternalFallbackToLocal: z.boolean().nullable().default(null).optional().meta({
+      description: 'Usar leitura local quando a API externa falhar neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [true],
+      default: null,
+    }),
   })
   .meta({ id: 'CreatePointDto' });
 

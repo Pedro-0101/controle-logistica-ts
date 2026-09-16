@@ -16,4 +16,12 @@ export class CameraObservation {
   @Column('timestamptz') expiresAt: Date;
   @Column({ nullable: true }) photoPath: string;
 
+  @Column({ type: 'varchar', nullable: true }) externalPlate: string | null;
+
+  @Column({ type: 'double precision', nullable: true }) externalConfidence: number | null;
+
+  @Column({ type: 'varchar', nullable: true }) externalProvider: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true }) externalCheckedAt: Date | null;
+
 }

@@ -132,7 +132,7 @@ describe('PointService', () => {
       companyId: 'company-1',
     });
   });
-  it.each([{ adminUnityId: 'unit-2' }, { type: 'exit' }])(
+  it.each([{ adminUnityId: 'unit-2' }])(
     'rejects context reassignment %j',
     async (update) => {
       await expect(
@@ -141,6 +141,12 @@ describe('PointService', () => {
       expect(repo.save).not.toHaveBeenCalled();
     },
   );
+  it('permite alterar o tipo (entry/exit/both) do ponto', async () => {
+    await service.update('point', { type: 'exit' } as never, actor);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'exit', updatedById: 'u' }),
+    );
+  });
   it('rejects editing corrupted or deleted unit context', async () => {
     units.findOneBy.mockResolvedValue(null);
     await expect(

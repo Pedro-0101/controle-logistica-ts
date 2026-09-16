@@ -63,6 +63,26 @@ export const pointResponseSchema = z
       description: 'Tempo em segundos para considerar observação expirada (usado quando inheritCompanyConfig = false)',
       examples: [5],
     }),
+    anprRecognitionMode: z.enum(['local', 'verified', 'external']).nullable().meta({
+      description: 'Modo de reconhecimento ANPR neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: ['verified'],
+    }),
+    anprExternalProvider: z.enum(['google_vision']).nullable().meta({
+      description: 'Provider externo de reconhecimento de placas neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: ['google_vision'],
+    }),
+    anprExternalMinConfidence: z.number().nullable().meta({
+      description: 'Confiança mínima para aceitar a placa da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [0.7],
+    }),
+    anprExternalTimeoutMs: z.number().int().nullable().meta({
+      description: 'Timeout em milissegundos da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [8000],
+    }),
+    anprExternalFallbackToLocal: z.boolean().nullable().meta({
+      description: 'Usar leitura local quando a API externa falhar neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [true],
+    }),
     createdById: z.string().meta({
       description: 'UUID do usuário que criou o registro',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],

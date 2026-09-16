@@ -66,6 +66,10 @@ com `sourceOnDemand` para só conectar quando houver espectador).
 | `JWT_EXPIRATION` | Validade do token JWT | `1d` |
 | `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin criado pelo seed | `admin@sistema.com` / `admin123` |
 | `ANPR_SERVICE_URL` | URL do microserviço Python (uvicorn binda em `127.0.0.1`; evite `localhost`, que pode resolver para IPv6 `::1` e falhar) | `http://127.0.0.1:8000` |
+| `GOOGLE_VISION_API_KEY` | Chave da API do Google Vision (obrigatória quando o modo de reconhecimento usa API externa). Alias aceito: `GOOGLE_API_KEY` | — |
+| `GOOGLE_VISION_ENDPOINT` | Base URL do Google Vision | `https://vision.googleapis.com` |
+| `GOOGLE_VISION_PRICE_PER_1000` | Preço por 1000 chamadas, para estimar custo no log de interações | — |
+| `ANPR_EXTERNAL_COST_CURRENCY` | Moeda usada no custo estimado | `USD` |
 | `PORT` | Porta da API NestJS | `3000` |
 | `OBS_KEY` / `OBS_SECRET` | Observabilidade (NestJS Observe) | — |
 
@@ -153,6 +157,53 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
    POST /anpr/reconhecer-imagem   { "imagemBase64": "..." }   → { placa, formato, confianca, raw }
    ```
 
+### Reconhecimento via API externa (opcional)
+
+Além do OCR local (Python/PaddleOCR), o registro automático pode consultar uma API
+externa (hoje Google Vision) para uma segunda leitura — considerada mais confiável.
+O modo é configurável por empresa e por ponto:
+
+| `anprRecognitionMode` | Comportamento |
+|---|---|
+| `local` (padrão) | Usa apenas o OCR local. Nenhuma chamada externa. |
+| `verified` | O OCR local confirma a placa e a imagem é enviada à API externa; a placa externa **vence** quando aceita, senão a local é usada. |
+| `external` | A API externa é autoritativa. Se não retornar placa válida, usa a local **apenas** se `anprExternalFallbackToLocal = true`; caso contrário, nenhum movimento é criado. |
+
+Campos relacionados: `anprExternalProvider`, `anprExternalMinConfidence`,
+`anprExternalTimeoutMs`, `anprExternalFallbackToLocal`.
+
+Para configurar (empresa ou ponto):
+
+```
+PATCH /company-config/:companyId
+{
+  "anprRecognitionMode": "verified",
+  "anprExternalProvider": "google_vision",
+  "anprExternalMinConfidence": 0.7,
+  "anprExternalFallbackToLocal": true
+}
+```
+
+As credenciais **não** ficam no banco — são lidas de `GOOGLE_VISION_API_KEY`.
+Cada chamada (incluindo falhas/timeout) é auditada com latência, status HTTP,
+unidades cobráveis e custo estimado, consultável em:
+
+```
+GET /anpr/external-interactions?dateFrom=2026-08-01T00:00:00.000Z
+→ { data, meta, summary }   // summary: calls, success, noPlate, failures,
+                            //           avgLatencyMs, p95LatencyMs, totalCost, costCurrency
+```
+
+Para o **admin global** (`companyId = null`), há uma visão consolidada de todas as
+empresas, com breakdown por empresa — restrita a ele (usuários de empresa recebem `403`):
+
+```
+GET /anpr/external-interactions/usage?dateFrom=2026-08-01T00:00:00.000Z
+→ { data, meta, summary, byCompany }
+  // byCompany: [{ companyId, companyName, calls, success, noPlate, failures,
+  //               avgLatencyMs, totalCost }]
+```
+
 ## Endpoints principais
 
 | Método | Rota | Descrição |
@@ -169,6 +220,9 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
 | GET | `/movement` | Listar movimentos |
 | POST | `/anpr/reconhecer-camera/:id` | Reconhecer placa pela câmera |
 | POST | `/anpr/reconhecer-imagem` | Reconhecer placa em imagem base64 |
+| GET | `/anpr/external-interactions` | Auditar chamadas às APIs externas (latência/custo) |
+| GET | `/anpr/external-interactions/usage` | Uso global por empresa (somente admin raiz `companyId = null`) |
+| GET/PATCH | `/company-config/:companyId` | Configurações da empresa (inclui modo de reconhecimento) |
 
 Todas as entidades (`company`, `admin-unity`, `point`, `vehicle`, `camera`, `movement`)
 possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
