@@ -15,7 +15,7 @@ export const findMovementsSchema = z
       description: 'Filtrar por tipo de movimento',
       examples: ['entry'],
     }),
-    status: z.enum(['open', 'closed', 'pending_review']).optional().meta({
+    status: z.enum(['open', 'closed', 'pending_review', 'discarded']).optional().meta({
       description: 'Filtrar por status do movimento',
       examples: ['open'],
     }),

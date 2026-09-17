@@ -42,7 +42,7 @@ export const movementListItemSchema = z
     dateTime: z.string().datetime({ offset: true }).meta({
       description: 'Data/hora em que o movimento ocorreu',
     }),
-    status: z.enum(['open', 'closed', 'pending_review']).meta({
+    status: z.enum(['open', 'closed', 'pending_review', 'discarded']).meta({
       description: 'Status do movimento',
     }),
     purpose: z.string().nullable().meta({

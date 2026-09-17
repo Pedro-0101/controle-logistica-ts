@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
+import { DataSource, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
@@ -16,7 +16,7 @@ import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import { Vehicle } from '../vehicle/entities/vehicle.entity.js';
 import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
-import { VehicleService } from '../vehicle/vehicle.service.js';
+import { VehicleService, normalizePlate } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
 import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
 
@@ -254,10 +254,49 @@ export class MovementService {
     });
   }
 
+  /**
+   * Descarta (marca como `discarded`) uma lista de movimentos pendentes.
+   *
+   * Diferente do recálculo, o descarte é sempre individual: apenas os IDs
+   * informados são afetados, mesmo que existam outros pendentes com a mesma placa.
+   */
+  async discard(ids: string[], actor: Actor) {
+    const companyId = requireCompanyId(actor);
+    const uniqueIds = [...new Set(ids)];
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(Movement);
+      const movements = await repository.find({
+        where: { id: In(uniqueIds), companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      const foundIds = new Set(movements.map((m) => m.id));
+      const missing = uniqueIds.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        throw new NotFoundException(`Movimento(s) não encontrado(s): ${missing.join(', ')}`);
+      }
+
+      const notPending = movements.filter((m) => m.status !== 'pending_review');
+      if (notPending.length > 0) {
+        throw new ConflictException(
+          `Apenas movimentos pendentes de revisão podem ser descartados: ${notPending.map((m) => m.id).join(', ')}`,
+        );
+      }
+
+      for (const movement of movements) {
+        movement.status = 'discarded';
+        movement.updatedById = actor.userId;
+      }
+
+      return repository.save(movements);
+    });
+  }
+
   async recalculate(id: string, dto: { plate?: string; vehicleId?: string }, actor: Actor) {
     const companyId = requireCompanyId(actor);
     return this.dataSource.transaction(async (manager) => {
-      const movement = await manager.getRepository(Movement).findOne({
+      const repository = manager.getRepository(Movement);
+      const movement = await repository.findOne({
         where: { id, companyId },
         lock: { mode: 'pessimistic_write' },
       });
@@ -281,12 +320,39 @@ export class MovementService {
 
       if (!vehicle.active) throw new BadRequestException('Veículo informado está inativo');
 
-      movement.vehicleId = vehicle.id;
-      movement.status = 'open';
-      movement.recognizedPlate = null;
-      movement.recalculatedAt = new Date();
-      movement.updatedById = actor.userId;
-      return manager.getRepository(Movement).save(movement);
+      // Confirma todos os pendentes da empresa que compartilham a mesma placa:
+      // a placa reconhecida pelo OCR no movimento alvo e a placa do veículo resolvido.
+      const targetPlates = new Set<string>();
+      if (movement.recognizedPlate) targetPlates.add(movement.recognizedPlate);
+      if (vehicle.plate) targetPlates.add(normalizePlate(vehicle.plate));
+
+      const pendingSamePlate = targetPlates.size > 0
+        ? await repository.find({
+            where: {
+              companyId,
+              status: 'pending_review',
+              recognizedPlate: In([...targetPlates]),
+            },
+            lock: { mode: 'pessimistic_write' },
+          })
+        : [];
+
+      const toConfirm = pendingSamePlate.some((m) => m.id === movement.id)
+        ? pendingSamePlate
+        : [...pendingSamePlate, movement];
+
+      const now = new Date();
+      for (const pending of toConfirm) {
+        pending.vehicleId = vehicle.id;
+        pending.status = 'open';
+        pending.recognizedPlate = null;
+        pending.recalculatedAt = now;
+        pending.updatedById = actor.userId;
+      }
+
+      await repository.save(toConfirm);
+
+      return toConfirm.find((m) => m.id === movement.id)!;
     });
   }
 

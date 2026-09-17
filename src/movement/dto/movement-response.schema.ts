@@ -11,7 +11,7 @@ import { createZodDto } from 'zod-nest';
  *   automaticamente e a placa não estava cadastrada. Limpo (nulo) após recálculo.
  * - `autoRegistered`: true se o movimento foi criado pelo sistema ANPR sem intervenção humana.
  * - `recalculatedAt`: data/hora do último recálculo (quando um pending_review virou open).
- * - `status`: pode ser `pending_review` além de `open` e `closed`.
+ * - `status`: pode ser `pending_review` ou `discarded` além de `open` e `closed`.
  * - `vehicleId`: pode ser null quando status é `pending_review`.
  */
 export const movementResponseSchema = z
@@ -40,12 +40,13 @@ export const movementResponseSchema = z
       description: 'Data e hora em que o movimento ocorreu (ISO 8601)',
       examples: ['2026-08-29T12:00:00.000Z'],
     }),
-    status: z.enum(['open', 'closed', 'pending_review']).meta({
+    status: z.enum(['open', 'closed', 'pending_review', 'discarded']).meta({
       description:
         'Status do movimento:\n' +
         '- `open`: Movimento confirmado e ativo (veículo dentro da unidade)\n' +
         '- `closed`: Movimento finalizado (veículo saiu)\n' +
-        '- `pending_review`: Placa não reconhecida no DB, aguardando correção do operador',
+        '- `pending_review`: Placa não reconhecida no DB, aguardando correção do operador\n' +
+        '- `discarded`: Descartado pelo operador como incorreto (falso positivo do OCR)',
       examples: ['open'],
     }),
     companyId: z.string().meta({

@@ -14,7 +14,7 @@ import { Vehicle } from '../../vehicle/entities/vehicle.entity.js';
 import { Company } from '../../company/entities/company.entity.js';
 
 const enumMovementTypes = ['entry', 'exit'];
-const enumMovementStatus = ['open', 'closed', 'pending_review'];
+const enumMovementStatus = ['open', 'closed', 'pending_review', 'discarded'];
 
 @Entity('movements')
 @Index('UQ_movements_observation', ['observationId'], { unique: true })
@@ -63,7 +63,12 @@ export class Movement {
   dateTime: Date;
 
   @ApiProperty({
-    description: 'Status do movimento',
+    description:
+      'Status do movimento:\n' +
+      '- `open`: Confirmado e ativo\n' +
+      '- `closed`: Finalizado\n' +
+      '- `pending_review`: Placa não reconhecida, aguardando revisão\n' +
+      '- `discarded`: Descartado/incorreto pelo operador (não conta como movimentação)',
     example: 'open',
     enum: enumMovementStatus,
     default: 'open',

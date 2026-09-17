@@ -41,7 +41,7 @@ describe('MovementService', () => {
     createQueryBuilder: vi.fn(),
   };
   const anprService = { reconhecerCamera: vi.fn() };
-  const vehicleService = { findOrCreateByPlate: vi.fn(), findOne: vi.fn() };
+  const vehicleService = { findOrCreateByPlate: vi.fn(), findOne: vi.fn(), findByPlate: vi.fn() };
   const pointService = { findOne: vi.fn() };
   const monitoringService = {
     current: vi.fn(),
@@ -53,6 +53,8 @@ describe('MovementService', () => {
   };
   const movementRepoInTx = {
     findOneBy: vi.fn(),
+    findOne: vi.fn(),
+    find: vi.fn(),
     save: vi.fn((data: Partial<Movement>) => data),
     create: vi.fn((data: Partial<Movement>) => data),
   };
@@ -218,6 +220,130 @@ describe('MovementService', () => {
       monitoringService.fresh.mockReturnValue(false);
 
       await expect(service.createFromCamera(dto, companyActor)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('recalculate', () => {
+    const pendingMovement = {
+      id: 'mov-1',
+      companyId: 'company-1',
+      status: 'pending_review',
+      recognizedPlate: 'ABC1D23',
+      vehicleId: null,
+      type: 'entry',
+    };
+
+    beforeEach(() => {
+      movementRepoInTx.findOne.mockResolvedValue({ ...pendingMovement });
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement>) => data);
+      vehicleService.findByPlate.mockResolvedValue({
+        id: 'vehicle-1', plate: 'ABC1D23', active: true,
+      });
+    });
+
+    it('confirma o movimento alvo e todos os pendentes com a mesma placa', async () => {
+      const other = { ...pendingMovement, id: 'mov-2' };
+      movementRepoInTx.find.mockResolvedValue([
+        { ...pendingMovement },
+        { ...other },
+      ]);
+
+      const result = await service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor);
+
+      expect(movementRepoInTx.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            companyId: 'company-1',
+            status: 'pending_review',
+            recognizedPlate: expect.anything(),
+          },
+        }),
+      );
+      const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
+      expect(saved).toHaveLength(2);
+      expect(saved.every((m) => m.status === 'open' && m.vehicleId === 'vehicle-1')).toBe(true);
+      expect(result).toMatchObject({ id: 'mov-1', status: 'open', vehicleId: 'vehicle-1' });
+    });
+
+    it('inclui a placa do veículo resolvido na busca por pendentes', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pendingMovement }]);
+      vehicleService.findOne.mockResolvedValue({ id: 'vehicle-1', plate: 'XYZ9Z99', active: true });
+
+      await service.recalculate('mov-1', { vehicleId: 'vehicle-1' }, companyActor);
+
+      const where = movementRepoInTx.find.mock.calls[0][0].where as { recognizedPlate: { value: string[] } };
+      expect(where.recognizedPlate.value).toEqual(
+        expect.arrayContaining(['ABC1D23', 'XYZ9Z99']),
+      );
+    });
+
+    it('lança 404 quando o veículo da placa não existe', async () => {
+      vehicleService.findByPlate.mockResolvedValue(null);
+
+      await expect(service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lança 409 quando o movimento não está pendente', async () => {
+      movementRepoInTx.findOne.mockResolvedValue({ ...pendingMovement, status: 'open' });
+
+      await expect(service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('discard', () => {
+    const pending = {
+      id: 'mov-1',
+      companyId: 'company-1',
+      status: 'pending_review',
+      recognizedPlate: 'ABC1D23',
+    };
+
+    it('descarta apenas os movimentos informados', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pending }, { ...pending, id: 'mov-2' }]);
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement>) => data);
+
+      const result = await service.discard(['mov-1', 'mov-2'], companyActor);
+
+      expect(movementRepoInTx.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: expect.anything(), companyId: 'company-1' },
+        }),
+      );
+      const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
+      expect(saved).toHaveLength(2);
+      expect(saved.every((m) => m.status === 'discarded' && m.updatedById === 'user-id')).toBe(true);
+      expect(result).toHaveLength(2);
+    });
+
+    it('não afeta outros pendentes com a mesma placa', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pending }]);
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement>) => data);
+
+      await service.discard(['mov-1'], companyActor);
+
+      const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
+      expect(saved).toHaveLength(1);
+      expect(saved[0].id).toBe('mov-1');
+    });
+
+    it('lança 404 quando algum movimento não existe', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pending }]);
+
+      await expect(service.discard(['mov-1', 'mov-2'], companyActor)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lança 409 quando algum movimento não está pendente', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pending, status: 'open' }]);
+
+      await expect(service.discard(['mov-1'], companyActor)).rejects.toThrow(
         ConflictException,
       );
     });

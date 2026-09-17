@@ -41,12 +41,22 @@ import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
  * - Com `{ "plate": "ABC1D24" }` → busca veículo pela placa corrigida
  * - Com `{ "vehicleId": "uuid" }` → usa o veículo já cadastrado
  * - Resultado: movimento muda para `open` com vehicleId preenchido
+ * - **Lote:** todos os pendentes com a mesma placa (recognizedPlate do movimento
+ *   e/ou placa do veículo resolvido) são confirmados na mesma chamada
+ *
+ * #### 5b. Descarte (front)
+ * Para leituras incorretas (falso positivo do OCR): `POST /movement/discard`
+ * - Envia `{ "ids": ["uuid1", "uuid2"] }` (seleção múltipla)
+ * - Resultado: os movimentos informados mudam para status `discarded`
+ * - Diferente do recálculo, afeta **somente** os IDs informados, mesmo que
+ *   existam outros pendentes com a mesma placa
  *
  * ### Resumo dos endpoints
  * | Método | Rota | Descrição |
  * |--------|------|-----------|
  * | `GET` | `/movement/pending-review` | Listar movimentos pendentes de revisão |
  * | `POST` | `/movement/:id/recalculate` | Recalcular movimento após correção |
+ * | `POST` | `/movement/discard` | Descartar movimentos pendentes em lote |
  */
 @ApiTags('Auto Registration')
 @ApiBearerAuth()
@@ -88,6 +98,12 @@ export class AutoRegistrationController {
    * - `recognizedPlate` é limpo (nulado) — os dados completos ficam no vehicle
    * - `recalculatedAt` registra a data/hora do recálculo
    *
+   * **Confirmação em lote por placa:**
+   * - Todos os movimentos `pending_review` da empresa com a mesma placa
+   *   (a `recognizedPlate` do movimento alvo e/ou a placa do veículo resolvido)
+   *   são confirmados com o mesmo `vehicleId` na mesma chamada.
+   * - A resposta retorna o movimento alvo (do `:id` informado).
+   *
    * **Erros comuns:**
    * - `404`: Movimento não existe OU veículo com essa placa não está cadastrado
    * - `409`: Movimento não está com status `pending_review` (já foi processado)
@@ -105,6 +121,8 @@ export class AutoRegistrationController {
       '4. Front envia `POST /movement/:id/recalculate` com placa corrigida ou vehicleId\n' +
       '5. Backend busca veículo, atualiza movimento para status `open`\n' +
       '6. Movimento agora aparece na listagem normal de movimentos\n\n' +
+      '**Confirmação em lote:** todos os pendentes com a mesma placa (recognizedPlate ' +
+      'do movimento e/ou placa do veículo resolvido) são confirmados na mesma chamada.\n\n' +
       '**Payload — Opção A (correção de placa):**\n' +
       '```json\n' +
       '{ "plate": "ABC1D24" }\n' +

@@ -9,6 +9,7 @@ import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
 import { FindMovementsDto } from './dto/find-movements.schema.js';
+import { DiscardMovementsDto } from './dto/discard-movements.schema.js';
 import { PaginatedMovementsResponseDto } from './dto/movement-list-response.schema.js';
 import { PendingReviewMovementDto } from '../auto-registration/dto/pending-review-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -97,6 +98,37 @@ export class MovementController {
     @Body(new ZodValidationPipe(CreateMovementFromObservationDto)) dto: CreateMovementFromObservationDto,
     @CurrentUser() actor: AuthenticatedUser,
   ) { return this.movementService.createFromObservation(dto, actor); }
+
+  @Post('discard')
+  @ApiOperation({
+    summary: 'Descartar movimentos pendentes em lote',
+    description:
+      'Marca como `discarded` uma lista de movimentos com status `pending_review`.\n\n' +
+      '**Uso no frontend:**\n' +
+      '1. Operador visualiza os pendentes via `GET /movement/pending-review`\n' +
+      '2. Seleciona um ou vários movimentos (ex.: leituras incorretas do OCR)\n' +
+      '3. Front envia `POST /movement/discard` com a lista de `ids` selecionados\n\n' +
+      '**Importante:** o descarte é individual — apenas os IDs informados são ' +
+      'alterados. Outros movimentos pendentes com a mesma placa **não** são afetados.\n\n' +
+      '**Resposta:** lista dos movimentos atualizados com `status: "discarded"`.\n\n' +
+      '**Erros comuns:**\n' +
+      '- `404`: algum dos IDs informados não existe ou não pertence à empresa do usuário\n' +
+      '- `409`: algum dos movimentos não está com status `pending_review`',
+  })
+  @ZodResponse({ status: 201, type: [MovementResponseDto] })
+  @ApiResponse({ status: 400, description: 'Lista de ids vazia ou com UUID inválido' })
+  @ApiResponse({ status: 401, description: 'Token JWT ausente ou inválido' })
+  @ApiResponse({ status: 404, description: 'Um ou mais movimentos não foram encontrados' })
+  @ApiResponse({
+    status: 409,
+    description: 'Um ou mais movimentos não estão com status pending_review',
+  })
+  discard(
+    @Body(new ZodValidationPipe(DiscardMovementsDto)) dto: DiscardMovementsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.movementService.discard(dto.ids, user);
+  }
 
   @Get()
   @ApiOperation({

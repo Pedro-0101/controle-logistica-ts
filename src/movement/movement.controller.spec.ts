@@ -19,6 +19,7 @@ describe('MovementController', () => {
     findOne: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    discard: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -86,5 +87,12 @@ describe('MovementController', () => {
 
     expect(controller.remove('1', user)).toEqual({ id: '1' });
     expect(service.remove).toHaveBeenCalledWith('1', user);
+  });
+
+  it('discard delega ao service com os ids e usuário', () => {
+    service.discard.mockReturnValue([{ id: '1', status: 'discarded' }]);
+
+    expect(controller.discard({ ids: ['1', '2'] }, user)).toEqual([{ id: '1', status: 'discarded' }]);
+    expect(service.discard).toHaveBeenCalledWith(['1', '2'], user);
   });
 });

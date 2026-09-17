@@ -15,6 +15,9 @@ import { createZodDto } from 'zod-nest';
  * - Pelo menos um dos campos `plate` ou `vehicleId` deve ser informado
  * - Se ambos forem informados, `vehicleId` tem prioridade
  * - A placa deve estar no formato normalizado (ABC1D23 ou ABC1234, sem hífen)
+ * - Ao recalcular, todos os movimentos `pending_review` da empresa com a mesma
+ *   placa (recognizedPlate do movimento e/ou placa do veículo resolvido) são
+ *   confirmados com o mesmo veículo.
  */
 export const recalculateMovementSchema = z
   .object({
