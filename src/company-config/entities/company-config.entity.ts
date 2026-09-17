@@ -14,6 +14,7 @@ const enumProtocols = ['http', 'https'];
 const enumAuthTypes = ['digest', 'basic'];
 const enumRecognitionModes = ['local', 'verified', 'external'];
 const enumExternalProviders = ['google_vision'];
+const enumExternalTriggers = ['after_confirmation', 'after_single_read'];
 
 @Entity('company_configs')
 export class CompanyConfig {
@@ -190,6 +191,43 @@ export class CompanyConfig {
   })
   @Column({ default: true })
   anprExternalFallbackToLocal: boolean;
+
+  @ApiProperty({
+    description:
+      'Momento de acionamento da API externa: after_confirmation (após N leituras confirmarem a placa) ou after_single_read (na primeira leitura; se a externa não vier com confiança suficiente, nenhum movimento é criado). Ignorado no modo local.',
+    example: 'after_confirmation',
+    enum: enumExternalTriggers,
+    default: 'after_confirmation',
+  })
+  @Column({ default: 'after_confirmation', enum: enumExternalTriggers })
+  anprExternalTrigger: string;
+
+  @ApiProperty({
+    description:
+      'Quando true, uma placa que corresponde a um veículo já cadastrado é confirmada sem consultar a API externa (aguarda as N leituras).',
+    example: false,
+    default: false,
+  })
+  @Column({ default: false })
+  anprTrustRegisteredVehicle: boolean;
+
+  @ApiProperty({
+    description:
+      'Quando true, se a primeira leitura identificar uma placa de veículo já cadastrado (com confiança >= anprFirstReadMinConfidence), o movimento é registrado imediatamente, sem aguardar as N leituras e sem consultar a API externa.',
+    example: false,
+    default: false,
+  })
+  @Column({ default: false })
+  anprRegisterOnFirstRead: boolean;
+
+  @ApiProperty({
+    description:
+      'Confiança mínima (0-1) da leitura local para confiar no atalho de placa cadastrada na primeira leitura (anprRegisterOnFirstRead).',
+    example: 0.85,
+    default: 0.85,
+  })
+  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0.85 })
+  anprFirstReadMinConfidence: number;
 
   // ── Movimentação ──
 

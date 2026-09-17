@@ -66,3 +66,5 @@ __pycache__/
 venv/
 anpr-service/data/
 weights/
+.coverage
+.pytest_cache/

@@ -83,6 +83,22 @@ export const companyConfigResponseSchema = z
       description: 'Usar leitura local quando a API externa não retornar placa válida.',
       examples: [true],
     }),
+    anprExternalTrigger: z.enum(['after_confirmation', 'after_single_read']).meta({
+      description: 'Momento de acionamento da API externa: after_confirmation ou after_single_read.',
+      examples: ['after_confirmation'],
+    }),
+    anprTrustRegisteredVehicle: z.boolean().meta({
+      description: 'Confirmar placa de veículo cadastrado sem consultar a API externa.',
+      examples: [false],
+    }),
+    anprRegisterOnFirstRead: z.boolean().meta({
+      description: 'Registrar movimento na primeira leitura quando a placa tiver veículo cadastrado.',
+      examples: [false],
+    }),
+    anprFirstReadMinConfidence: z.number().meta({
+      description: 'Confiança mínima (0-1) da leitura local para o atalho de placa cadastrada na primeira leitura.',
+      examples: [0.85],
+    }),
     movementAutoCloseMinutes: z.number().int().meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],

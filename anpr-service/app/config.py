@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Pré-processamento antes do OCR (CLAHE + redução de ruído + upscale).
     anpr_preprocessar: bool = True
     anpr_upscale_altura_min: int = Field(64, ge=0, le=512)
+    # Fração recortada de cada borda (topo/base/laterais) antes da detecção,
+    # para descartar overlays da câmera (nome, data/hora) que o OCR confunde
+    # com placa. 0.10 = remove 10% de cada lado.
+    anpr_crop_bordas_percent: float = Field(0.10, ge=0.0, le=0.4)
     inference_timeout_seconds: float = Field(30.0, gt=0)
     max_manual_pending: int = Field(4, ge=1, le=64)
     max_monitors: int = Field(64, ge=1, le=128)

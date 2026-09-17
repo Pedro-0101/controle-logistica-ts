@@ -170,7 +170,25 @@ O modo é configurável por empresa e por ponto:
 | `external` | A API externa é autoritativa. Se não retornar placa válida, usa a local **apenas** se `anprExternalFallbackToLocal = true`; caso contrário, nenhum movimento é criado. |
 
 Campos relacionados: `anprExternalProvider`, `anprExternalMinConfidence`,
-`anprExternalTimeoutMs`, `anprExternalFallbackToLocal`.
+`anprExternalTimeoutMs`, `anprExternalFallbackToLocal`, `anprExternalTrigger`.
+
+**Quando acionar a API externa** (`anprExternalTrigger`):
+
+| Valor | Comportamento |
+|---|---|
+| `after_confirmation` (padrão) | A externa só é chamada depois que o OCR local confirma a placa (N leituras). |
+| `after_single_read` | A externa é chamada já na primeira leitura; se voltar com confiança ≥ `anprExternalMinConfidence`, o movimento é registrado na hora. Se não voltar placa confiável, **nenhum movimento é criado**. Ignorado no modo `local`. |
+
+**Atalhos de placa cadastrada** (evitam a API externa):
+
+| Campo | Efeito |
+|---|---|
+| `anprTrustRegisteredVehicle` | Placa que corresponde a um veículo já cadastrado é confirmada sem consultar a API externa (ainda aguarda as N leituras). |
+| `anprRegisterOnFirstRead` | Se a **primeira leitura** identificar placa de veículo cadastrado com confiança ≥ `anprFirstReadMinConfidence`, registra o movimento imediatamente — sem N leituras e sem API externa. |
+| `anprFirstReadMinConfidence` | Confiança mínima (0-1) para o atalho acima (padrão `0.85`). |
+
+A origem do registro fica gravada no movimento (`recognitionProvider`):
+`local`, `registered`, `external_fast` ou o nome do provider externo.
 
 Para configurar (empresa ou ponto):
 
@@ -180,7 +198,11 @@ PATCH /company-config/:companyId
   "anprRecognitionMode": "verified",
   "anprExternalProvider": "google_vision",
   "anprExternalMinConfidence": 0.7,
-  "anprExternalFallbackToLocal": true
+  "anprExternalFallbackToLocal": true,
+  "anprExternalTrigger": "after_single_read",
+  "anprTrustRegisteredVehicle": true,
+  "anprRegisterOnFirstRead": true,
+  "anprFirstReadMinConfidence": 0.85
 }
 ```
 
@@ -203,6 +225,20 @@ GET /anpr/external-interactions/usage?dateFrom=2026-08-01T00:00:00.000Z
   // byCompany: [{ companyId, companyName, calls, success, noPlate, failures,
   //               avgLatencyMs, totalCost }]
 ```
+
+### Recorte de bordas da imagem (OCR)
+
+Câmeras costumam sobrepor nas bordas o nome do canal e a data/hora, que o OCR
+pode confundir com uma placa. Antes da detecção, o microserviço recorta uma
+fração de cada lado (topo/base/laterais), focando no centro. O padrão é **10%**
+por lado e pode ser ajustado em `anpr-service/.env`:
+
+```
+ANPR_CROP_BORDAS_PERCENT=0.10
+```
+
+O recorte é feito antes do YOLO e do fallback PaddleOCR; os bounding boxes
+retornados são remapeados para as coordenadas da imagem original.
 
 ## Endpoints principais
 

@@ -9,12 +9,12 @@ Faz fallback para PaddleOCR completo se YOLO não detectar nada.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
 from .plate import Placa, normalizar_placa
-from .preprocessamento import preparar_recorte, realcar_imagem
+from .preprocessamento import cortar_bordas, preparar_recorte, realcar_imagem
 
 
 @dataclass(frozen=True)
@@ -63,14 +63,28 @@ class PlacaRecognizer:
     def reconhecer(self, imagem: np.ndarray, full_frame_fallback: bool = True) -> list[CandidatoPlaca]:
         """Retorna os candidatos a placa em uma imagem (BGR, OpenCV).
 
-        Tenta YOLO+PaddleOCR primeiro (recorte original; se o OCR não ler
-        nada válido, repete com o recorte pré-processado). Se ainda assim
-        não houver candidatos, faz fallback para PaddleOCR na imagem inteira.
+        As bordas são recortadas antes da inferência (para descartar overlays
+        da câmera como nome/data-hora). Tenta YOLO+PaddleOCR primeiro (recorte
+        original; se o OCR não ler nada válido, repete com o recorte
+        pré-processado). Se ainda assim não houver candidatos, faz fallback
+        para PaddleOCR na imagem recortada.
+
+        Os bounding boxes retornados são remapeados para as coordenadas da
+        imagem original recebida.
         """
-        candidatos = self._reconhecer_yolo(imagem)
-        if candidatos or not full_frame_fallback:
-            return candidatos
-        return self._reconhecer_paddle_completo(imagem)
+        recortada, offset_x, offset_y = cortar_bordas(imagem)
+        candidatos = self._reconhecer_yolo(recortada)
+        if not candidatos and full_frame_fallback:
+            candidatos = self._reconhecer_paddle_completo(recortada)
+        if offset_x or offset_y:
+            candidatos = [
+                replace(c, box=(
+                    c.box[0] + offset_x, c.box[1] + offset_y,
+                    c.box[2] + offset_x, c.box[3] + offset_y,
+                ) if c.box else None)
+                for c in candidatos
+            ]
+        return candidatos
 
     def _reconhecer_yolo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
         """Etapa 1: YOLO detecta placa → PaddleOCR lê o recorte.

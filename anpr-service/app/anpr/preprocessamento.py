@@ -19,6 +19,34 @@ import numpy as np
 from ..config import settings
 
 
+def cortar_bordas(
+    imagem: np.ndarray, percentual: float | None = None
+) -> tuple[np.ndarray, int, int]:
+    """Recorta uma fração de cada borda da imagem, focando no centro.
+
+    Overlays da câmera (nome do canal, data/hora) ficam nas bordas e podem ser
+    lidos pelo OCR como se fossem placas; removê-los reduz falsos positivos.
+    Retorna a imagem recortada e o offset (x, y) do recorte na imagem original,
+    para remapear bounding boxes.
+
+    Args:
+        imagem: Imagem BGR (OpenCV).
+        percentual: Fração (0-0.4) removida de cada lado. None usa
+            `ANPR_CROP_BORDAS_PERCENT`.
+    """
+    if percentual is None:
+        percentual = settings.anpr_crop_bordas_percent
+    if percentual <= 0 or imagem.ndim < 2:
+        return imagem, 0, 0
+
+    altura, largura = imagem.shape[:2]
+    dx = int(largura * percentual)
+    dy = int(altura * percentual)
+    if largura - 2 * dx < 2 or altura - 2 * dy < 2:
+        return imagem, 0, 0
+    return imagem[dy : altura - dy, dx : largura - dx], dx, dy
+
+
 def melhorar_contraste(imagem: np.ndarray) -> np.ndarray:
     """Aplica CLAHE no canal L (LAB); devolve a imagem com contraste realçado."""
     lab = cv2.cvtColor(imagem, cv2.COLOR_BGR2LAB)

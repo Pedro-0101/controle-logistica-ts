@@ -54,11 +54,15 @@ const baseCompanyConfig = () => ({
   anprExternalMinConfidence: 0.7,
   anprExternalTimeoutMs: 8000,
   anprExternalFallbackToLocal: true,
+  anprExternalTrigger: 'after_confirmation',
+  anprTrustRegisteredVehicle: false,
+  anprRegisterOnFirstRead: false,
+  anprFirstReadMinConfidence: 0.85,
 });
 
 describe('AutoRegistrationService', () => {
   let service: AutoRegistrationService;
-  let monitoring: { getConfirmedObservations: ReturnType<typeof vi.fn>; ensureObservationPersisted: ReturnType<typeof vi.fn> };
+  let monitoring: { getActiveObservations: ReturnType<typeof vi.fn>; ensureObservationPersisted: ReturnType<typeof vi.fn> };
   let anpr: { observationImage: ReturnType<typeof vi.fn> };
   let providers: { get: ReturnType<typeof vi.fn> };
   let interactions: { record: ReturnType<typeof vi.fn>; attachMovement: ReturnType<typeof vi.fn> };
@@ -94,7 +98,7 @@ describe('AutoRegistrationService', () => {
     provider = { name: 'google_vision', recognize: vi.fn() };
 
     monitoring = {
-      getConfirmedObservations: vi.fn(async () => [{ camera, observation: state }]),
+      getActiveObservations: vi.fn(async () => [{ camera, observation: state }]),
       ensureObservationPersisted: vi.fn(async () => observation),
     };
     anpr = { observationImage: vi.fn(async () => Buffer.from('image')) };
@@ -388,7 +392,7 @@ describe('AutoRegistrationService', () => {
   });
 
   it('não propaga erro ao buscar observações (reconcile)', async () => {
-    monitoring.getConfirmedObservations.mockRejectedValueOnce(new Error('anpr offline'));
+    monitoring.getActiveObservations.mockRejectedValueOnce(new Error('anpr offline'));
 
     await expect(service.reconcile()).resolves.toBeUndefined();
     expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
@@ -406,6 +410,102 @@ describe('AutoRegistrationService', () => {
 
     service.onApplicationBootstrap();
 
-    expect(monitoring.getConfirmedObservations).not.toHaveBeenCalled();
+    expect(monitoring.getActiveObservations).not.toHaveBeenCalled();
+  });
+
+  const candidateState = (): CurrentObservation => ({
+    ...state,
+    status: 'candidate',
+    consecutiveReads: 1,
+  });
+
+  it('anprRegisterOnFirstRead registra placa cadastrada na 1ª leitura sem API externa', async () => {
+    companyConfig.anprRegisterOnFirstRead = true;
+    companyConfig.anprFirstReadMinConfidence = 0.7;
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+
+    await service.reconcile();
+
+    expect(providers.get).not.toHaveBeenCalled();
+    expect(movementService.createAutoRegistered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recognizedPlate: 'ABC1D23',
+        recognitionProvider: 'registered',
+        recognitionConfidence: 0.8,
+      }),
+    );
+  });
+
+  it('anprRegisterOnFirstRead não registra quando a confiança é baixa', async () => {
+    companyConfig.anprRegisterOnFirstRead = true;
+    companyConfig.anprFirstReadMinConfidence = 0.95;
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+
+    await service.reconcile();
+
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+  });
+
+  it('anprTrustRegisteredVehicle aguarda confirmação e registra sem API externa', async () => {
+    companyConfig.anprTrustRegisteredVehicle = true;
+    companyConfig.anprRecognitionMode = 'verified';
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+
+    await service.reconcile();
+
+    expect(providers.get).not.toHaveBeenCalled();
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: state }]);
+    await service.reconcile();
+
+    expect(providers.get).not.toHaveBeenCalled();
+    expect(movementService.createAutoRegistered).toHaveBeenCalledWith(
+      expect.objectContaining({ recognizedPlate: 'ABC1D23', recognitionProvider: 'registered' }),
+    );
+  });
+
+  it('anprExternalTrigger after_single_read chama a API externa na 1ª leitura e registra', async () => {
+    companyConfig.anprExternalTrigger = 'after_single_read';
+    companyConfig.anprRecognitionMode = 'verified';
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+    provider.recognize.mockResolvedValue({
+      plate: 'XYZ9Z99',
+      confidence: 0.95,
+      raw: 'XYZ9Z99',
+      provider: 'google_vision',
+    });
+
+    await service.reconcile();
+
+    expect(provider.recognize).toHaveBeenCalledTimes(1);
+    expect(movementService.createAutoRegistered).toHaveBeenCalledWith(
+      expect.objectContaining({ recognizedPlate: 'XYZ9Z99', recognitionProvider: 'external_fast' }),
+    );
+  });
+
+  it('after_single_read sem placa confiável da externa não registra nada', async () => {
+    companyConfig.anprExternalTrigger = 'after_single_read';
+    companyConfig.anprRecognitionMode = 'verified';
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+    provider.recognize.mockResolvedValue(null);
+
+    await service.reconcile();
+
+    expect(interactions.record).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'no_plate', finalSource: 'none' }),
+    );
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+  });
+
+  it('after_single_read é ignorado no modo local', async () => {
+    companyConfig.anprExternalTrigger = 'after_single_read';
+    companyConfig.anprRecognitionMode = 'local';
+    monitoring.getActiveObservations.mockResolvedValue([{ camera, observation: candidateState() }]);
+
+    await service.reconcile();
+
+    expect(providers.get).not.toHaveBeenCalled();
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
   });
 });

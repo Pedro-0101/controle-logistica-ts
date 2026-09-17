@@ -187,6 +187,42 @@ export class Point {
   anprExternalFallbackToLocal: boolean | null;
 
   @ApiProperty({
+    description: 'Momento de acionamento da API externa neste ponto: after_confirmation ou after_single_read (usado quando inheritCompanyConfig = false)',
+    example: 'after_confirmation',
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'varchar', nullable: true, default: null })
+  anprExternalTrigger: string | null;
+
+  @ApiProperty({
+    description: 'Confirmar placa de veículo cadastrado sem consultar a API externa neste ponto (usado quando inheritCompanyConfig = false)',
+    example: false,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'boolean', nullable: true, default: null })
+  anprTrustRegisteredVehicle: boolean | null;
+
+  @ApiProperty({
+    description: 'Registrar movimento na primeira leitura quando a placa tiver veículo cadastrado neste ponto (usado quando inheritCompanyConfig = false)',
+    example: false,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'boolean', nullable: true, default: null })
+  anprRegisterOnFirstRead: boolean | null;
+
+  @ApiProperty({
+    description: 'Confiança mínima para o atalho de placa cadastrada na primeira leitura neste ponto (usado quando inheritCompanyConfig = false)',
+    example: 0.85,
+    nullable: true,
+    default: null,
+  })
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true, default: null })
+  anprFirstReadMinConfidence: number | null;
+
+  @ApiProperty({
     description: 'ID do usuário que criou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })

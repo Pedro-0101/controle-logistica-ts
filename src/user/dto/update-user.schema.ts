@@ -1,7 +1,10 @@
 import { createZodDto } from 'zod-nest';
+import { objectWithoutDefaults } from '../../common/zod.util.js';
 import { createUserSchema } from './create-user.schema.js';
 
-export const updateUserSchema = createUserSchema.partial().meta({ id: 'UpdateUserDto' });
+export const updateUserSchema = objectWithoutDefaults(createUserSchema)
+  .partial()
+  .meta({ id: 'UpdateUserDto' });
 
 export class UpdateUserDto extends createZodDto(updateUserSchema) {}
 

@@ -90,6 +90,26 @@ export const createPointSchema = z
       examples: [true],
       default: null,
     }),
+    anprExternalTrigger: z.enum(['after_confirmation', 'after_single_read']).nullable().default(null).optional().meta({
+      description: 'Momento de acionamento da API externa neste ponto: after_confirmation ou after_single_read (usado quando inheritCompanyConfig = false)',
+      examples: ['after_confirmation'],
+      default: null,
+    }),
+    anprTrustRegisteredVehicle: z.boolean().nullable().default(null).optional().meta({
+      description: 'Confirmar placa de veículo cadastrado sem consultar a API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [false],
+      default: null,
+    }),
+    anprRegisterOnFirstRead: z.boolean().nullable().default(null).optional().meta({
+      description: 'Registrar movimento na primeira leitura quando a placa tiver veículo cadastrado neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [false],
+      default: null,
+    }),
+    anprFirstReadMinConfidence: z.number().min(0).max(1).nullable().default(null).optional().meta({
+      description: 'Confiança mínima para o atalho de placa cadastrada na primeira leitura neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [0.85],
+      default: null,
+    }),
   })
   .meta({ id: 'CreatePointDto' });
 

@@ -83,6 +83,22 @@ export const pointResponseSchema = z
       description: 'Usar leitura local quando a API externa falhar neste ponto (usado quando inheritCompanyConfig = false)',
       examples: [true],
     }),
+    anprExternalTrigger: z.enum(['after_confirmation', 'after_single_read']).nullable().meta({
+      description: 'Momento de acionamento da API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: ['after_confirmation'],
+    }),
+    anprTrustRegisteredVehicle: z.boolean().nullable().meta({
+      description: 'Confirmar placa de veículo cadastrado sem consultar a API externa neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [false],
+    }),
+    anprRegisterOnFirstRead: z.boolean().nullable().meta({
+      description: 'Registrar movimento na primeira leitura quando a placa tiver veículo cadastrado neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [false],
+    }),
+    anprFirstReadMinConfidence: z.number().nullable().meta({
+      description: 'Confiança mínima para o atalho de placa cadastrada na primeira leitura neste ponto (usado quando inheritCompanyConfig = false)',
+      examples: [0.85],
+    }),
     createdById: z.string().meta({
       description: 'UUID do usuário que criou o registro',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],

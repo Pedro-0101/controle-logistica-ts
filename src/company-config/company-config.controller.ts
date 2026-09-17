@@ -26,7 +26,8 @@ export class CompanyConfigController {
       '- **Câmera defaults:** `cameraDefaultProtocol`, `cameraDefaultPort`, `cameraDefaultAuthType`, `cameraSnapshotIntervalMs`\n' +
       '- **ANPR:** `anprConfidenceThreshold`, `anprMatchTimeoutSeconds`, `anprConfirmationReads`, `anprStaleAfterSeconds`\n' +
       '- **Auto Registration:** `anprAutoRegister`, `anprSaveUnrecognizedPhotos`, `anprAutoRegisterCooldownSeconds`\n' +
-      '- **Reconhecimento (modo externo):** `anprRecognitionMode`, `anprExternalProvider`, `anprExternalMinConfidence`, `anprExternalTimeoutMs`, `anprExternalFallbackToLocal`\n' +
+      '- **Reconhecimento (modo externo):** `anprRecognitionMode`, `anprExternalProvider`, `anprExternalMinConfidence`, `anprExternalTimeoutMs`, `anprExternalFallbackToLocal`, `anprExternalTrigger`\n' +
+      '- **Atalhos de placa cadastrada:** `anprTrustRegisteredVehicle`, `anprRegisterOnFirstRead`, `anprFirstReadMinConfidence`\n' +
       '- **Movimentação:** `movementAutoCloseMinutes`, `requireDriverName`, `requirePurpose`\n\n' +
       '**Modos de reconhecimento (`anprRecognitionMode`):**\n' +
       '- `local`: usa apenas o OCR do microserviço Python (padrão).\n' +
@@ -83,7 +84,15 @@ export class CompanyConfigController {
       '- `anprExternalMinConfidence`: Confiança mínima (0 a 1) para aceitar a placa retornada pela API externa.\n' +
       '- `anprExternalTimeoutMs`: Timeout em milissegundos da chamada à API externa.\n' +
       '- `anprExternalFallbackToLocal`: Quando `true`, usa a leitura local se a API externa não retornar ' +
-      'placa válida. Quando `false` (modo `external`), o movimento não é criado nesse caso.\n\n' +
+      'placa válida. Quando `false` (modo `external`), o movimento não é criado nesse caso.\n' +
+      '- `anprExternalTrigger`: `after_confirmation` (chama a externa após as N leituras, padrão) ou ' +
+      '`after_single_read` (chama na primeira leitura e registra se vier com confiança suficiente; ' +
+      'sem placa confiável, nenhum movimento é criado). Ignorado no modo `local`.\n\n' +
+      '**Atalhos de placa cadastrada (evitam a API externa):**\n' +
+      '- `anprTrustRegisteredVehicle`: Placa de veículo já cadastrado é confirmada sem API externa (aguarda N leituras).\n' +
+      '- `anprRegisterOnFirstRead`: Primeira leitura de placa cadastrada com confiança >= ' +
+      '`anprFirstReadMinConfidence` registra imediatamente, sem N leituras e sem API externa.\n' +
+      '- `anprFirstReadMinConfidence`: Confiança mínima (0-1) para o atalho acima.\n\n' +
       '**Configurações de Câmera (defaults):**\n' +
       '- `cameraDefaultProtocol`: Protocolo padrão para novas câmeras (http/https)\n' +
       '- `cameraDefaultPort`: Porta padrão para novas câmeras\n' +
@@ -124,6 +133,15 @@ export class CompanyConfigController {
       '{\n' +
       '  "anprRecognitionMode": "external",\n' +
       '  "anprExternalFallbackToLocal": false\n' +
+      '}\n' +
+      '```\n\n' +
+      '**Exemplo — API externa na primeira leitura + atalhos de placa cadastrada:**\n' +
+      '```json\n' +
+      '{\n' +
+      '  "anprExternalTrigger": "after_single_read",\n' +
+      '  "anprTrustRegisteredVehicle": true,\n' +
+      '  "anprRegisterOnFirstRead": true,\n' +
+      '  "anprFirstReadMinConfidence": 0.85\n' +
       '}\n' +
       '```\n\n' +
       '**Exemplo — Voltar ao reconhecimento local:**\n' +

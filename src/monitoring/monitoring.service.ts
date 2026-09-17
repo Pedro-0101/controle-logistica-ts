@@ -180,8 +180,14 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
   }
 
   fresh(state: CurrentObservation): boolean {
+    return state.status === 'confirmed' && this.usable(state);
+  }
+
+  /** Observação utilizável: confirmada ou ainda candidata, com dados e datas válidos. */
+  private usable(state: CurrentObservation): boolean {
     const now = Date.now();
-    return state.status === 'confirmed' && !!state.observationId && !!state.placa &&
+    return (state.status === 'confirmed' || state.status === 'candidate') &&
+      !!state.observationId && !!state.placa &&
       !!state.expiresAt && !!state.lastSeenAt && !!state.capturedAt &&
       Date.parse(state.expiresAt) > now && Date.parse(state.lastSeenAt) <= now + 1000 &&
       Date.parse(state.capturedAt) <= Date.parse(state.lastSeenAt);
@@ -209,6 +215,27 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       try {
         const state = await this.anpr.currentObservation(camera.id);
         if (state.status === 'confirmed' && state.observationId && state.placa && this.fresh(state)) {
+          results.push({ camera, observation: state });
+        }
+      } catch {
+        // skip cameras that are offline or returning errors
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Observações confirmadas e candidatas (primeira leitura ainda não confirmada).
+   * Usado pelo auto-registro para atalhos de placa cadastrada e validação externa
+   * na primeira leitura.
+   */
+  async getActiveObservations(): Promise<Array<{ camera: Camera; observation: CurrentObservation }>> {
+    const cameras = await this.cameras.find();
+    const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
+    for (const camera of cameras) {
+      try {
+        const state = await this.anpr.currentObservation(camera.id);
+        if (this.usable(state)) {
           results.push({ camera, observation: state });
         }
       } catch {

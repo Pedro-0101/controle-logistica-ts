@@ -34,6 +34,10 @@ interface ResolvedAnprConfig {
   anprExternalMinConfidence: number;
   anprExternalTimeoutMs: number;
   anprExternalFallbackToLocal: boolean;
+  anprExternalTrigger: string;
+  anprTrustRegisteredVehicle: boolean;
+  anprRegisterOnFirstRead: boolean;
+  anprFirstReadMinConfidence: number;
 }
 
 interface RecognitionDecision {
@@ -89,16 +93,18 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
   }
 
   private async process() {
-    const confirmed = await this.monitoring.getConfirmedObservations();
-    if (confirmed.length > 0) {
-      this.logger.debug(`[auto-reg] ${confirmed.length} observacao(oes) confirmada(s) para processar`);
+    const active = await this.monitoring.getActiveObservations();
+    if (active.length > 0) {
+      this.logger.debug(`[auto-reg] ${active.length} observacao(oes) ativa(s) para processar`);
     }
-    for (const { camera, observation } of confirmed) {
+    for (const { camera, observation } of active) {
       if (this.stopped) return;
       if (this.processed.has(observation.observationId!)) continue;
       try {
-        await this.processObservation(camera, observation);
-        this.processed.add(observation.observationId!);
+        // `false` = candidata aguardando confirmação; não marcar como processada
+        // para poder registrar quando o Python confirmar as N leituras.
+        const handled = await this.processObservation(camera, observation);
+        if (handled) this.processed.add(observation.observationId!);
       } catch (err) {
         this.logger.warn(`Failed to auto-register for camera ${camera.id}: ${String(err)}`);
       }
@@ -111,11 +117,16 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     }
   }
 
-  private async processObservation(camera: Camera, state: CurrentObservation) {
+  /**
+   * Processa uma observação. Retorna `true` quando ela não deve ser revisitada
+   * (movimento criado, descarte deliberado ou já tratada) e `false` quando é uma
+   * candidata aguardando confirmação — nesse caso o `processed` não é marcado.
+   */
+  private async processObservation(camera: Camera, state: CurrentObservation): Promise<boolean> {
     const companyId = camera.companyId;
     this.logger.log(
       `[auto-reg] Processando observacao: placa=${state.placa} camera=${camera.id} ` +
-      `observationId=${state.observationId} confianca=${state.confianca}`,
+      `observationId=${state.observationId} status=${state.status} confianca=${state.confianca}`,
     );
 
     let companyConfig;
@@ -146,13 +157,16 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
       `cooldown=${resolved.anprAutoRegisterCooldownSeconds}s ` +
       `confirmationReads=${resolved.anprConfirmationReads} ` +
       `recognitionMode=${resolved.anprRecognitionMode} ` +
+      `externalTrigger=${resolved.anprExternalTrigger} ` +
+      `trustRegistered=${resolved.anprTrustRegisteredVehicle} ` +
+      `registerOnFirstRead=${resolved.anprRegisterOnFirstRead} ` +
       `externalProvider=${resolved.anprExternalProvider} ` +
       `inheritCompanyConfig=${point.inheritCompanyConfig}`,
     );
 
     if (!resolved.anprAutoRegister) {
       this.logger.debug(`[auto-reg] Auto-registro desabilitado para camera ${camera.id}`);
-      return;
+      return true;
     }
 
     const observation = await this.monitoring.ensureObservationPersisted(camera, state);
@@ -160,20 +174,95 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     const existingMovement = await this.movementService.findExistingByObservation(observation.id, companyId);
     if (existingMovement) {
       this.logger.debug(`[auto-reg] Movimento ja existe para observacao ${observation.id}`);
-      return;
+      return true;
     }
 
-    if (resolved.anprAutoRegisterCooldownSeconds > 0) {
-      const vehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
-      if (vehicle) {
-        const hasRecent = await this.movementService.hasRecentMovement(
-          vehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
-        );
-        if (hasRecent) {
-          this.logger.debug(`[auto-reg] Cooldown ativo para veiculo ${vehicle.id} placa=${state.placa} no ponto ${camera.pointId}`);
-          return;
-        }
+    const registeredVehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
+
+    if (resolved.anprAutoRegisterCooldownSeconds > 0 && registeredVehicle) {
+      const hasRecent = await this.movementService.hasRecentMovement(
+        registeredVehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
+      );
+      if (hasRecent) {
+        this.logger.debug(`[auto-reg] Cooldown ativo para veiculo ${registeredVehicle.id} placa=${state.placa} no ponto ${camera.pointId}`);
+        return true;
       }
+    }
+
+    const isConfirmed = state.status === 'confirmed';
+    const registered = !!registeredVehicle?.active;
+    const trustRegistered =
+      resolved.anprTrustRegisteredVehicle || resolved.anprRegisterOnFirstRead;
+
+    // Atalho #4: placa cadastrada + 1ª leitura confiável → registra sem N leituras
+    // e sem API externa.
+    if (
+      resolved.anprRegisterOnFirstRead &&
+      registered &&
+      (state.confianca ?? 0) >= resolved.anprFirstReadMinConfidence
+    ) {
+      this.logger.log(
+        `[auto-reg] Atalho placa cadastrada na primeira leitura: placa=${state.placa} ` +
+        `confianca=${state.confianca} veiculo=${registeredVehicle!.id} camera=${camera.id}`,
+      );
+      await this.commitRecognition(camera, observation, state, companyId, resolved, {
+        plate: state.placa!,
+        provider: 'registered',
+        confidence: state.confianca ?? 0,
+        finalSource: 'local',
+      });
+      return true;
+    }
+
+    // Atalho #3: placa cadastrada confiável → ignora API externa (aguarda N leituras).
+    if (trustRegistered && registered) {
+      if (!isConfirmed) {
+        this.logger.debug(
+          `[auto-reg] Placa cadastrada ${state.placa}; aguardando confirmacao sem API externa ` +
+          `(camera=${camera.id} observation=${observation.id})`,
+        );
+        return false;
+      }
+      this.logger.log(
+        `[auto-reg] Placa cadastrada confirmada sem API externa: placa=${state.placa} ` +
+        `veiculo=${registeredVehicle!.id} camera=${camera.id}`,
+      );
+      await this.commitRecognition(camera, observation, state, companyId, resolved, {
+        plate: state.placa!,
+        provider: 'registered',
+        confidence: state.confianca ?? 0,
+        finalSource: 'local',
+      });
+      return true;
+    }
+
+    // Atalho #1/#2: API externa já na primeira leitura. Sem placa externa
+    // confiável, nenhum movimento é criado (sem fallback local).
+    if (
+      resolved.anprExternalTrigger === 'after_single_read' &&
+      resolved.anprRecognitionMode !== 'local'
+    ) {
+      const decision = await this.evaluateExternal(camera, observation, state, resolved, false);
+      if (!decision) {
+        this.logger.warn(
+          `[auto-reg] API externa sem placa valida na primeira leitura; movimento nao criado ` +
+          `(camera=${camera.id} observation=${observation.id})`,
+        );
+        return true;
+      }
+      await this.commitRecognition(camera, observation, state, companyId, resolved, {
+        ...decision,
+        provider: 'external_fast',
+      });
+      return true;
+    }
+
+    // Candidata sem atalho aplicável: aguarda as N leituras para confirmar.
+    if (!isConfirmed) {
+      this.logger.debug(
+        `[auto-reg] Observacao candidata ${observation.id} (placa=${state.placa}) aguardando confirmacao`,
+      );
+      return false;
     }
 
     const recognition = await this.resolveRecognition(camera, observation, state, resolved);
@@ -183,9 +272,25 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
         `[auto-reg] API externa não retornou placa válida e fallback local desabilitado; ` +
         `movimento não criado (camera=${camera.id} observation=${observation.id})`,
       );
-      return;
+      return true;
     }
 
+    await this.commitRecognition(camera, observation, state, companyId, resolved, recognition);
+    return true;
+  }
+
+  /**
+   * Persiste a placa final, aplica cooldown com a placa final, salva evidência
+   * (quando aplicável) e cria o movimento. Compartilhado por todos os fluxos.
+   */
+  private async commitRecognition(
+    camera: Camera,
+    observation: CameraObservation,
+    state: CurrentObservation,
+    companyId: string,
+    resolved: ResolvedAnprConfig,
+    recognition: RecognitionDecision,
+  ): Promise<void> {
     const finalPlate = recognition.plate;
     const vehicle = await this.vehicleService.findByPlate(finalPlate, companyId);
 
@@ -251,28 +356,45 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     state: CurrentObservation,
     resolved: ResolvedAnprConfig,
   ): Promise<RecognitionDecision | null> {
-    const localPlate = state.placa!;
-    const localConfidence = state.confianca ?? 0;
-    const localDecision = (
-      finalSource: FinalSource,
-      image?: Buffer,
-      interactionId?: string | null,
-    ): RecognitionDecision => ({
-      plate: localPlate,
+    if (resolved.anprRecognitionMode === 'local') {
+      return this.localDecision(state, 'local');
+    }
+
+    const fallbackAllowed =
+      resolved.anprRecognitionMode === 'verified' || resolved.anprExternalFallbackToLocal;
+    return this.evaluateExternal(camera, observation, state, resolved, fallbackAllowed);
+  }
+
+  private localDecision(
+    state: CurrentObservation,
+    finalSource: FinalSource,
+    image?: Buffer,
+    interactionId?: string | null,
+  ): RecognitionDecision {
+    return {
+      plate: state.placa!,
       provider: 'local',
-      confidence: localConfidence,
+      confidence: state.confianca ?? 0,
       finalSource,
       image,
       interactionId,
-    });
+    };
+  }
 
-    if (resolved.anprRecognitionMode === 'local') {
-      return localDecision('local');
-    }
-
+  /**
+   * Consulta a API externa (uma vez por observação) e devolve a decisão final.
+   * Quando `fallbackAllowed` é `false`, uma resposta não aceita retorna `null`
+   * (nenhum movimento deve ser criado).
+   */
+  private async evaluateExternal(
+    camera: Camera,
+    observation: CameraObservation,
+    state: CurrentObservation,
+    resolved: ResolvedAnprConfig,
+    fallbackAllowed: boolean,
+  ): Promise<RecognitionDecision | null> {
+    const localPlate = state.placa!;
     const providerName = resolved.anprExternalProvider;
-    const fallbackAllowed =
-      resolved.anprRecognitionMode === 'verified' || resolved.anprExternalFallbackToLocal;
 
     // Evita rechamar (e rebilhar) a API externa após retry/restart.
     if (observation.externalCheckedAt) {
@@ -284,7 +406,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
           finalSource: 'external',
         };
       }
-      return fallbackAllowed ? localDecision('local_fallback') : null;
+      return fallbackAllowed ? this.localDecision(state, 'local_fallback') : null;
     }
 
     let image: Buffer | undefined;
@@ -293,14 +415,14 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     } catch (error) {
       this.logger.warn(`[auto-reg] Falha ao buscar imagem para API externa: ${String(error)}`);
       await this.markExternalChecked(observation, null, null, providerName);
-      return fallbackAllowed ? localDecision('local_fallback') : null;
+      return fallbackAllowed ? this.localDecision(state, 'local_fallback') : null;
     }
 
     const provider = this.providers.get(providerName);
     if (!provider) {
       this.logger.warn(`[auto-reg] Provider externo desconhecido: ${providerName}`);
       await this.markExternalChecked(observation, null, null, providerName);
-      return fallbackAllowed ? localDecision('local_fallback', image) : null;
+      return fallbackAllowed ? this.localDecision(state, 'local_fallback', image) : null;
     }
 
     const startedAt = new Date();
@@ -355,7 +477,9 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
       pointId: camera.pointId,
       observationId: observation.id,
       provider: providerName,
-      mode: resolved.anprRecognitionMode,
+      mode: resolved.anprExternalTrigger === 'after_single_read'
+        ? `${resolved.anprRecognitionMode}:single_read`
+        : resolved.anprRecognitionMode,
       outcome,
       localPlate,
       externalPlate: result?.plate ?? null,
@@ -390,7 +514,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     }
 
     if (!fallbackAllowed) return null;
-    return localDecision('local_fallback', image, interactionId);
+    return this.localDecision(state, 'local_fallback', image, interactionId);
   }
 
   private async markExternalChecked(
@@ -428,6 +552,10 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
       anprExternalMinConfidence: Number(source('anprExternalMinConfidence') ?? 0.7),
       anprExternalTimeoutMs: Number(source('anprExternalTimeoutMs') ?? 8000),
       anprExternalFallbackToLocal: source('anprExternalFallbackToLocal') ?? true,
+      anprExternalTrigger: source('anprExternalTrigger') ?? 'after_confirmation',
+      anprTrustRegisteredVehicle: source('anprTrustRegisteredVehicle') ?? false,
+      anprRegisterOnFirstRead: source('anprRegisterOnFirstRead') ?? false,
+      anprFirstReadMinConfidence: Number(source('anprFirstReadMinConfidence') ?? 0.85),
     };
   }
 

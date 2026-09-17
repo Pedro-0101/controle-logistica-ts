@@ -93,6 +93,26 @@ export const createCompanyConfigSchema = z
       examples: [true],
       default: true,
     }),
+    anprExternalTrigger: z.enum(['after_confirmation', 'after_single_read']).default('after_confirmation').meta({
+      description: 'Momento de acionamento da API externa: after_confirmation (após N leituras confirmarem a placa) ou after_single_read (na primeira leitura; se a externa não vier com confiança suficiente, nenhum movimento é criado). Ignorado no modo local.',
+      examples: ['after_confirmation'],
+      default: 'after_confirmation',
+    }),
+    anprTrustRegisteredVehicle: z.boolean().default(false).meta({
+      description: 'Quando true, uma placa que corresponde a um veículo já cadastrado é confirmada sem consultar a API externa (aguarda as N leituras).',
+      examples: [false],
+      default: false,
+    }),
+    anprRegisterOnFirstRead: z.boolean().default(false).meta({
+      description: 'Quando true, se a primeira leitura identificar uma placa de veículo já cadastrado (com confiança >= anprFirstReadMinConfidence), o movimento é registrado imediatamente, sem aguardar as N leituras e sem consultar a API externa.',
+      examples: [false],
+      default: false,
+    }),
+    anprFirstReadMinConfidence: z.number().min(0).max(1).default(0.85).meta({
+      description: 'Confiança mínima (0-1) da leitura local para confiar no atalho de placa cadastrada na primeira leitura (anprRegisterOnFirstRead).',
+      examples: [0.85],
+      default: 0.85,
+    }),
     movementAutoCloseMinutes: z.number().int().default(60).meta({
       description: 'Minutos para auto-fechar movimento',
       examples: [60],
