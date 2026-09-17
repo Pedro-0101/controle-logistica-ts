@@ -12,6 +12,7 @@ describe('JwtStrategy', () => {
   it('deve mapear o payload do token para AuthenticatedUser', async () => {
     const user = await strategy.validate({
       sub: 'user-1',
+      name: 'João',
       email: 'joao@empresa.com',
       role: 'admin',
       companyId: 'company-1',
@@ -19,6 +20,7 @@ describe('JwtStrategy', () => {
 
     expect(user).toEqual({
       userId: 'user-1',
+      name: 'João',
       email: 'joao@empresa.com',
       role: 'admin',
       companyId: 'company-1',

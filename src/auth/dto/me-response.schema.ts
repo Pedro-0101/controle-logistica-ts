@@ -8,6 +8,13 @@ export const meResponseSchema = z
       description: 'ID do usuário (UUID)',
       examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
     }),
+    name: z
+      .string()
+      .nullish()
+      .meta({
+        description: 'Nome completo do usuário',
+        examples: ['João Silva'],
+      }),
     email: z.email().meta({
       description: 'Email do usuário',
       examples: ['joao@email.com'],

@@ -29,6 +29,7 @@ export class AuthService {
   async login(user: SafeUser) {
     const payload: JwtPayload = {
       sub: user.id,
+      name: user.name,
       email: user.email,
       role: user.role,
       companyId: user.companyId,
