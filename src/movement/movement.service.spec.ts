@@ -36,6 +36,7 @@ describe('MovementService', () => {
     save: vi.fn((data: Partial<Movement>) => data),
     find: vi.fn(),
     findOneBy: vi.fn(),
+    count: vi.fn(),
     remove: vi.fn((data: Partial<Movement>) => data),
     createQueryBuilder: vi.fn(),
   };
@@ -219,6 +220,31 @@ describe('MovementService', () => {
       await expect(service.createFromCamera(dto, companyActor)).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('hasRecentMovementByPlate', () => {
+    it('detecta movimento recente pela placa reconhecida', async () => {
+      repository.count.mockResolvedValue(1);
+
+      await expect(
+        service.hasRecentMovementByPlate('ABC1D23', 'point-1', 300, 'company-1'),
+      ).resolves.toBe(true);
+      expect(repository.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          recognizedPlate: 'ABC1D23',
+          pointId: 'point-1',
+          companyId: 'company-1',
+        }),
+      });
+    });
+
+    it('retorna false quando não há movimento recente', async () => {
+      repository.count.mockResolvedValue(0);
+
+      await expect(
+        service.hasRecentMovementByPlate('ABC1D23', 'point-1', 300, 'company-1'),
+      ).resolves.toBe(false);
     });
   });
 

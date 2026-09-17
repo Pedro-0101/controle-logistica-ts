@@ -70,6 +70,7 @@ describe('AutoRegistrationService', () => {
   let movementService: {
     findExistingByObservation: ReturnType<typeof vi.fn>;
     hasRecentMovement: ReturnType<typeof vi.fn>;
+    hasRecentMovementByPlate: ReturnType<typeof vi.fn>;
     createAutoRegistered: ReturnType<typeof vi.fn>;
   };
   let companyConfigService: { findOne: ReturnType<typeof vi.fn>; createWithDefaults: ReturnType<typeof vi.fn> };
@@ -111,6 +112,7 @@ describe('AutoRegistrationService', () => {
     movementService = {
       findExistingByObservation: vi.fn(async () => null),
       hasRecentMovement: vi.fn(async () => false),
+      hasRecentMovementByPlate: vi.fn(async () => false),
       createAutoRegistered: vi.fn(async () => ({ id: 'mov-1' })),
     };
     companyConfigService = {
@@ -339,6 +341,32 @@ describe('AutoRegistrationService', () => {
     await service.reconcile();
 
     expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+  });
+
+  it('aplica cooldown por placa para veículo não cadastrado', async () => {
+    companyConfig.anprAutoRegisterCooldownSeconds = 30;
+    vehicleService.findByPlate.mockResolvedValue(null);
+    movementService.hasRecentMovementByPlate.mockResolvedValue(true);
+
+    await service.reconcile();
+
+    expect(movementService.hasRecentMovementByPlate).toHaveBeenCalledWith(
+      'ABC1D23', 'point-1', 30, 'company-1',
+    );
+    expect(movementService.hasRecentMovement).not.toHaveBeenCalled();
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+  });
+
+  it('registra placa não cadastrada quando não há movimento recente', async () => {
+    companyConfig.anprAutoRegisterCooldownSeconds = 30;
+    vehicleService.findByPlate.mockResolvedValue(null);
+
+    await service.reconcile();
+
+    expect(movementService.hasRecentMovementByPlate).toHaveBeenCalledWith(
+      'ABC1D23', 'point-1', 30, 'company-1',
+    );
+    expect(movementService.createAutoRegistered).toHaveBeenCalled();
   });
 
   it('salva foto de evidência usando a imagem já baixada', async () => {

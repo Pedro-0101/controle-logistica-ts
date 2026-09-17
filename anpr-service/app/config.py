@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Pré-processamento antes do OCR (CLAHE + redução de ruído + upscale).
     anpr_preprocessar: bool = True
     anpr_upscale_altura_min: int = Field(64, ge=0, le=512)
+    # Tempo (s) que cada leitura de placa permanece válida para a votação. A
+    # janela total de confirmação é `confirmation_reads * anpr_read_ttl_seconds`
+    # (ex.: 2 leituras × 10 s = 20 s), tolerando frames sem detecção do OCR.
+    anpr_read_ttl_seconds: float = Field(10.0, gt=0)
     # Fração recortada de cada borda (topo/base/laterais) antes da detecção,
     # para descartar overlays da câmera (nome, data/hora) que o OCR confunde
     # com placa. 0.10 = remove 10% de cada lado.

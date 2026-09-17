@@ -179,12 +179,18 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
     const registeredVehicle = await this.vehicleService.findByPlate(state.placa!, companyId);
 
-    if (resolved.anprAutoRegisterCooldownSeconds > 0 && registeredVehicle) {
-      const hasRecent = await this.movementService.hasRecentMovement(
-        registeredVehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
-      );
+    if (resolved.anprAutoRegisterCooldownSeconds > 0) {
+      const hasRecent = registeredVehicle
+        ? await this.movementService.hasRecentMovement(
+            registeredVehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
+          )
+        : await this.movementService.hasRecentMovementByPlate(
+            state.placa!, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
+          );
       if (hasRecent) {
-        this.logger.debug(`[auto-reg] Cooldown ativo para veiculo ${registeredVehicle.id} placa=${state.placa} no ponto ${camera.pointId}`);
+        this.logger.debug(
+          `[auto-reg] Cooldown ativo para placa=${state.placa} no ponto ${camera.pointId}`,
+        );
         return true;
       }
     }
@@ -294,20 +300,23 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     const finalPlate = recognition.plate;
     const vehicle = await this.vehicleService.findByPlate(finalPlate, companyId);
 
-    // A API externa pode corrigir a placa local; refaz o cooldown com a placa final
-    // para não duplicar movimento de um veículo que já passou pelo ponto.
-    if (
-      finalPlate !== state.placa &&
-      vehicle &&
-      resolved.anprAutoRegisterCooldownSeconds > 0 &&
-      await this.movementService.hasRecentMovement(
-        vehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
-      )
-    ) {
-      this.logger.debug(
-        `[auto-reg] Cooldown ativo (placa final=${finalPlate}) para veiculo ${vehicle.id} no ponto ${camera.pointId}`,
-      );
-      return;
+    // A API externa pode corrigir a placa local; refaz o cooldown com a placa
+    // final para não duplicar movimento de um veículo que já passou pelo ponto.
+    // Vale para veículos cadastrados (por id) e não cadastrados (por placa).
+    if (resolved.anprAutoRegisterCooldownSeconds > 0) {
+      const hasRecent = vehicle
+        ? await this.movementService.hasRecentMovement(
+            vehicle.id, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
+          )
+        : await this.movementService.hasRecentMovementByPlate(
+            finalPlate, camera.pointId, resolved.anprAutoRegisterCooldownSeconds, companyId,
+          );
+      if (hasRecent) {
+        this.logger.debug(
+          `[auto-reg] Cooldown ativo (placa final=${finalPlate}) no ponto ${camera.pointId}`,
+        );
+        return;
+      }
     }
 
     if (!vehicle && resolved.anprSaveUnrecognizedPhotos) {

@@ -345,6 +345,20 @@ export class MovementService {
     return count > 0;
   }
 
+  /** Cooldown por placa reconhecida, usado quando o veículo ainda não está cadastrado. */
+  async hasRecentMovementByPlate(recognizedPlate: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
+    const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
+    const count = await this.movementRepository.count({
+      where: {
+        recognizedPlate,
+        pointId,
+        companyId,
+        dateTime: MoreThanOrEqual(cutoff),
+      },
+    });
+    return count > 0;
+  }
+
   async findExistingByObservation(observationId: string, companyId: string): Promise<Movement | null> {
     return this.movementRepository.findOneBy({ observationId, companyId });
   }

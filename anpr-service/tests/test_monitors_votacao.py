@@ -90,14 +90,55 @@ def test_nova_placa_fica_candidata_ate_acumular_votos(criar_monitor):
     assert estado["status"] == "confirmed"
 
 
-def test_frame_vazio_zera_votos_quando_candidata(criar_monitor):
+def test_frame_vazio_preserva_votos_dentro_da_janela(criar_monitor):
     monitor = criar_monitor(confirmation_reads=2)
     ler(monitor, "ABC1D23")
     assert monitor.state()["status"] == "candidate"
     ler_vazio(monitor)
     estado = monitor.state()
+    # Frames sem placa não zeram a votação enquanto a leitura está na janela.
     assert estado["status"] == "candidate"
-    assert estado["consecutiveReads"] == 0
+    assert estado["consecutiveReads"] == 1
+    assert len(monitor.historico) == 1
+    ler(monitor, "ABC1D23")
+    assert monitor.state()["status"] == "confirmed"
+
+
+def test_leituras_dentro_da_janela_confirmam(criar_monitor, monkeypatch):
+    # 2 leituras × 10 s = janela de 20 s (padrão).
+    monitor = criar_monitor(confirmation_reads=2, stale_after_seconds=60)
+    relogio = [1000.0]
+    monkeypatch.setattr("app.routers.monitors.time.monotonic", lambda: relogio[0])
+
+    def ler_no_relogio(placa, confianca=0.9):
+        resultado = CandidatoPlaca(Placa(placa, "mercosul"), confianca, placa, None)
+        monitor.accept(resultado, None, monitor.epoch, datetime.now(UTC), relogio[0], b"jpg")
+
+    ler_no_relogio("ABC1D23")
+    relogio[0] += 19  # ainda dentro dos 20 s
+    ler_no_relogio("ABC1D23")
+    assert monitor.state()["status"] == "confirmed"
+    assert monitor.state()["consecutiveReads"] == 2
+
+
+def test_votos_expiram_pela_janela_temporal(criar_monitor, monkeypatch):
+    monitor = criar_monitor(confirmation_reads=2, stale_after_seconds=60)
+    relogio = [1000.0]
+    monkeypatch.setattr("app.routers.monitors.time.monotonic", lambda: relogio[0])
+
+    def ler_no_relogio(placa):
+        resultado = CandidatoPlaca(Placa(placa, "mercosul"), .9, placa, None)
+        monitor.accept(resultado, None, monitor.epoch, datetime.now(UTC), relogio[0], b"jpg")
+
+    def ler_vazio_no_relogio():
+        monitor.accept(None, None, monitor.epoch, datetime.now(UTC), relogio[0], b"jpg")
+
+    ler_no_relogio("ABC1D23")
+    relogio[0] += 21  # além da janela de 20 s
+    ler_vazio_no_relogio()
+    estado = monitor.state()
+    assert estado["status"] == "waiting"
+    assert estado["placa"] is None
     assert monitor.historico == []
 
 

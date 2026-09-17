@@ -33,9 +33,10 @@ class CameraMonitor:
         self.captured_at = self.last_seen = None
         self.last_mono = 0.0
         self.reads = 0
-        # Histórico das últimas leituras para votação: uma leitura errada
-        # pontual do OCR não zera a confirmação da placa mais votada.
-        self.historico: list[str] = []
+        # Histórico das últimas leituras para votação, com o instante de cada
+        # uma: uma leitura errada pontual do OCR não zera a confirmação da placa
+        # mais votada e leituras antigas expiram pela janela temporal.
+        self.historico: list[tuple[str, float]] = []
         self.epoch = 0
         self.closed = False
         self.task = None
@@ -59,6 +60,16 @@ class CameraMonitor:
                     expiresAt=iso(self.last_seen + timedelta(seconds=self.config.stale_after_seconds))
                     if self.last_seen else None, consecutiveReads=self.reads)
 
+    def _votes(self, now):
+        """Conta os votos válidos na janela temporal, descartando leituras antigas.
+
+        Cada leitura vale por `anpr_read_ttl_seconds`; a janela total é
+        `confirmation_reads * anpr_read_ttl_seconds` (ex.: 2 leituras × 10 s = 20 s).
+        """
+        cutoff = now - self.config.confirmation_reads * settings.anpr_read_ttl_seconds
+        self.historico = [(placa, ts) for placa, ts in self.historico if ts >= cutoff]
+        return Counter(placa for placa, _ in self.historico)
+
     def accept(self, result, error, epoch, captured, monotonic, jpeg):
         if self.closed or epoch != self.epoch:
             return
@@ -69,19 +80,20 @@ class CameraMonitor:
             logger.warning("[monitor:%s] Erro na captura: %s", self.camera_id, error)
             self.invalidate("offline")
             return
+        # Votação multi-frame com janela temporal: frames sem placa não zeram os
+        # votos, tolerando falhas intermitentes do OCR enquanto o veículo
+        # permanece no enquadramento. Leituras antigas expiram pelo relógio.
+        votos = self._votes(monotonic)
         if result is None:
-            # A blank frame breaks consecutive confirmation but tolerates transient occlusion.
             if self.status != "confirmed":
-                self.reads = 0
-                self.historico = []
-            if not self.observation_id:
-                self.status = "waiting"
+                if self.plate and votos.get(self.plate):
+                    self.reads = votos[self.plate]
+                    self.last_seen, self.last_mono = captured, monotonic
+                else:
+                    self.invalidate("waiting")
             return
-        # Votação multi-frame: a placa mais votada na janela recente é eleita,
-        # tolerando misreads pontuais do OCR sem zerar a confirmação.
-        self.historico.append(result.placa.valor)
-        del self.historico[:-(self.config.confirmation_reads + 2)]
-        votos = Counter(self.historico)
+        self.historico.append((result.placa.valor, monotonic))
+        votos = self._votes(monotonic)
         mais_votada = max(votos, key=votos.get)
         if mais_votada != self.plate:
             logger.info(
