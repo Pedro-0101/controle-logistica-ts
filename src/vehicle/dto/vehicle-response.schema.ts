@@ -27,6 +27,10 @@ export const vehicleResponseSchema = z
       description: 'Indica se o veículo está ativo',
       examples: [true],
     }),
+    notes: z.string().nullish().meta({
+      description: 'Observações sobre o veículo',
+      examples: ['Veículo utilizado apenas para entregas expressas'],
+    }),
     createdById: z.string().meta({
       description: 'ID do usuário que criou o registro',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],

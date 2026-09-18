@@ -22,6 +22,10 @@ export const createVehicleSchema = z.object({
     examples: [true],
     default: 'true',
   }),
+  notes: z.string().optional().meta({
+    description: 'Observações sobre o veículo',
+    examples: ['Veículo utilizado apenas para entregas expressas'],
+  }),
 }).superRefine((value, ctx) => {
   if (value.type === 'own' && !value.code?.trim()) {
     ctx.addIssue({

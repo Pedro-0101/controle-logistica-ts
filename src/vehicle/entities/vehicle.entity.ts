@@ -67,6 +67,14 @@ export class Vehicle {
   active: boolean;
 
   @ApiProperty({
+    description: 'Observações sobre o veículo',
+    example: 'Veículo utilizado apenas para entregas expressas',
+    required: false,
+  })
+  @Column({ nullable: true })
+  notes: string;
+
+  @ApiProperty({
     description: 'ID do usuário que criou o registro',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
