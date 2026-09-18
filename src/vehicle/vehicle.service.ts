@@ -19,15 +19,49 @@ export class VehicleService {
     private readonly vehicleRepository: Repository<Vehicle>,
   ) {}
 
-  create(createVehicleDto: CreateVehicleDto, actor: Actor) {
+  async create(createVehicleDto: CreateVehicleDto, actor: Actor) {
     const companyId = requireCompanyId(actor);
+    const type = createVehicleDto.type ?? 'own';
+    const code =
+      type === 'own'
+        ? createVehicleDto.code?.trim()
+        : await this.generateCode(type, companyId, this.vehicleRepository);
+    if (!code) {
+      throw new BadRequestException('Código é obrigatório para veículos próprios');
+    }
     const vehicle = this.vehicleRepository.create({
       ...createVehicleDto,
+      type,
+      code,
       plate: normalizePlate(createVehicleDto.plate),
       companyId,
       createdById: actor.userId,
     });
     return this.vehicleRepository.save(vehicle);
+  }
+
+  private async generateCode(
+    type: string,
+    companyId: string,
+    repository: Repository<Vehicle>,
+  ): Promise<string> {
+    const prefix = AUTO_CODE_PREFIX[type];
+    if (!prefix) {
+      throw new BadRequestException('Código é obrigatório para veículos próprios');
+    }
+    // Reserva o próximo número de forma atômica. O contador só cresce, então
+    // códigos nunca são reaproveitados mesmo após remoção de veículos.
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
+      const rows: Array<{ lastValue: number | string }> = await repository.query(
+        RESERVE_CODE_SQL,
+        [companyId, type],
+      );
+      const code = formatVehicleCode(prefix, Number(rows[0].lastValue));
+      if (!(await repository.existsBy({ companyId, code }))) {
+        return code;
+      }
+    }
+    throw new ConflictException('Não foi possível gerar um código único; tente novamente');
   }
 
   findAll(actor: Actor) {
@@ -52,9 +86,10 @@ export class VehicleService {
     if (existing) {
       return existing;
     }
+    const code = await this.generateCode('visitor', companyId, repository);
     await repository.createQueryBuilder().insert().into(Vehicle).values({
       plate,
-      code: plate,
+      code,
       type: 'visitor',
       active: true,
       companyId,
@@ -89,6 +124,42 @@ export class VehicleService {
     const vehicle = await this.findOne(id, actor);
     return this.vehicleRepository.remove(vehicle);
   }
+}
+
+const AUTO_CODE_PREFIX: Record<string, string> = {
+  thirdParty: 'TER',
+  visitor: 'VIS',
+};
+
+const MAX_CODE_ATTEMPTS = 1000;
+
+/**
+ * Reserva atomicamente o próximo número da sequência (empresa, tipo).
+ * Na primeira emissão, semeia o contador a partir do maior código já existente
+ * para não colidir com veículos criados antes da sequência existir.
+ * O contador persistido só incrementa, evitando reuso de códigos.
+ */
+const RESERVE_CODE_SQL = `
+  INSERT INTO "vehicle_code_sequences" ("companyId", "type", "lastValue")
+  VALUES (
+    $1,
+    $2,
+    COALESCE((
+      SELECT MAX(CAST(SUBSTRING(v."code" FROM 4) AS INTEGER))
+      FROM "vehicles" v
+      WHERE v."companyId" = $1
+        AND v."type" = $2
+        AND v."code" ~ '^(TER|VIS)[0-9]+$'
+    ), 0) + 1
+  )
+  ON CONFLICT ("companyId", "type")
+  DO UPDATE SET "lastValue" = "vehicle_code_sequences"."lastValue" + 1
+  RETURNING "lastValue"
+`;
+
+/** Código sequencial no formato TER00N (terceiro) ou VIS00N (visitante). */
+export function formatVehicleCode(prefix: string, sequence: number): string {
+  return `${prefix}${String(sequence).padStart(3, '0')}`;
 }
 
 /** Canonicalize spelling only. Never guess OCR substitutions for user input. */

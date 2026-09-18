@@ -144,7 +144,8 @@ O front não acessa a câmera nem roda OCR — isso fica no microserviço Python
    > O `companyId` é derivado automaticamente do token JWT (não envie no body).
 
    Internamente o backend: captura o snapshot da câmera → chama o ANPR → normaliza a
-   placa → **cria o veículo se não existir** (com `code` = placa e `type` = `visitor`)
+   placa → **cria o veículo se não existir** (com `type` = `visitor` e `code` sequencial
+   gerado pelo backend no formato `VIS00N`)
    → registra a movimentação e devolve o movimento **com** os dados do veículo.
 
    O tipo (`entry`/`exit`) é resolvido a partir do `type` do ponto vinculado à câmera;

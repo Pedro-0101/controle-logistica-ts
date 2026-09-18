@@ -17,7 +17,7 @@ const actor: Actor = {
 };
 const root = { ...actor, companyId: null };
 function mockRepository() {
-  const query = {
+  const qb = {
     insert: vi.fn().mockReturnThis(),
     into: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
@@ -29,9 +29,11 @@ function mockRepository() {
     save: vi.fn(async (v) => v),
     find: vi.fn(),
     findOneBy: vi.fn(),
+    existsBy: vi.fn().mockResolvedValue(false),
     remove: vi.fn(async (v) => v),
-    createQueryBuilder: vi.fn(() => query),
-    query,
+    createQueryBuilder: vi.fn(() => qb),
+    query: vi.fn().mockResolvedValue([{ lastValue: 1 }]),
+    qb,
   };
 }
 describe('VehicleService', () => {
@@ -64,8 +66,45 @@ describe('VehicleService', () => {
       }),
     );
   });
+  it('requires a code for own vehicles', async () => {
+    await expect(
+      service.create({ plate: 'ABC1234', type: 'own' } as never, actor),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.create({ plate: 'ABC1234', type: 'own', code: '   ' } as never, actor),
+    ).rejects.toThrow(BadRequestException);
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+  it('generates sequential TER codes for thirdParty vehicles', async () => {
+    repo.query.mockResolvedValue([{ lastValue: 4 }]);
+    await service.create({ plate: 'ABC1234', type: 'thirdParty' } as never, actor);
+    expect(repo.query).toHaveBeenCalledWith(expect.stringContaining('vehicle_code_sequences'), [
+      'company-1',
+      'thirdParty',
+    ]);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'TER004', type: 'thirdParty' }),
+    );
+  });
+  it('generates sequential VIS codes for visitor vehicles', async () => {
+    repo.query.mockResolvedValue([{ lastValue: 1 }]);
+    await service.create({ plate: 'ABC1234', type: 'visitor' } as never, actor);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'VIS001', type: 'visitor' }),
+    );
+  });
+  it('never reuses a reserved code even if the vehicle was deleted', async () => {
+    repo.query
+      .mockResolvedValueOnce([{ lastValue: 7 }])
+      .mockResolvedValueOnce([{ lastValue: 8 }]);
+    repo.existsBy.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await service.create({ plate: 'ABC1234', type: 'thirdParty' } as never, actor);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'TER008' }),
+    );
+  });
   it('forbids root creation without company', () =>
-    expect(() => service.create({ plate: 'ABC1234' } as never, root)).toThrow(
+    expect(service.create({ plate: 'ABC1234' } as never, root)).rejects.toThrow(
       ForbiddenException,
     ));
   it('lists company and root scopes', async () => {
@@ -94,15 +133,15 @@ describe('VehicleService', () => {
     expect(
       await service.findOrCreateByPlate('ABC1234', 'company-1', actor),
     ).toBe(created);
-    expect(repo.query.values).toHaveBeenCalledWith({
+    expect(repo.qb.values).toHaveBeenCalledWith({
       plate: 'ABC1234',
-      code: 'ABC1234',
+      code: 'VIS001',
       type: 'visitor',
       active: true,
       companyId: 'company-1',
       createdById: 'u',
     });
-    expect(repo.query.orIgnore).toHaveBeenCalled();
+    expect(repo.qb.orIgnore).toHaveBeenCalled();
     expect(repo.findOneBy).toHaveBeenNthCalledWith(2, {
       plate: 'ABC1234',
       companyId: 'company-1',
@@ -125,7 +164,7 @@ describe('VehicleService', () => {
       service.findOrCreateByPlate('ABC1234', 'company-1', actor),
     ]);
     expect(results).toEqual([winner, winner]);
-    expect(repo.query.orIgnore).toHaveBeenCalledTimes(2);
+    expect(repo.qb.orIgnore).toHaveBeenCalledTimes(2);
     expect(repo.save).not.toHaveBeenCalled();
   });
   it('does not return another vehicle when code conflict prevents insertion', async () => {
@@ -166,7 +205,7 @@ describe('VehicleService', () => {
   });
   it('propagates database failures without false success', async () => {
     repo.findOneBy.mockResolvedValue(null);
-    repo.query.execute.mockRejectedValue(new Error('db failure'));
+    repo.qb.execute.mockRejectedValue(new Error('db failure'));
     await expect(
       service.findOrCreateByPlate('ABC1234', 'company-1', actor),
     ).rejects.toThrow('db failure');

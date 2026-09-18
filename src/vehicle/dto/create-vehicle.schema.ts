@@ -6,8 +6,10 @@ export const createVehicleSchema = z.object({
     description: 'Placa do veículo (deve ser única)',
     examples: ['ABC1D23'],
   }),
-  code: z.string().min(1, 'Code is required').meta({
-    description: 'Código identificador do veículo (deve ser único)',
+  code: z.string().min(1, 'Code is required').optional().meta({
+    description:
+      'Código identificador do veículo (deve ser único). Obrigatório para veículos próprios (own); ' +
+      'para terceiros (thirdParty) e visitantes (visitor) é calculado automaticamente pelo backend.',
     examples: ['VEH-001'],
   }),
   type: z.enum(['own', 'thirdParty', 'visitor']).default('own').meta({
@@ -20,6 +22,14 @@ export const createVehicleSchema = z.object({
     examples: [true],
     default: 'true',
   }),
+}).superRefine((value, ctx) => {
+  if (value.type === 'own' && !value.code?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['code'],
+      message: 'Code is required for own vehicles',
+    });
+  }
 }).meta({ id: 'CreateVehicleDto' });
 
 export class CreateVehicleDto extends createZodDto(createVehicleSchema) {}
