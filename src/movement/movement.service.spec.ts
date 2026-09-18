@@ -57,7 +57,16 @@ describe('MovementService', () => {
     find: vi.fn(),
     save: vi.fn((data: Partial<Movement>) => data),
     create: vi.fn((data: Partial<Movement>) => data),
+    createQueryBuilder: vi.fn(),
   };
+  const closeVisitQb = {
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    getOne: vi.fn(),
+  };
+  movementRepoInTx.createQueryBuilder.mockReturnValue(closeVisitQb);
   const vehicleRepoInTx = {
     findOneByOrFail: vi.fn(),
     findOneBy: vi.fn(),
@@ -151,6 +160,8 @@ describe('MovementService', () => {
       pointService.findOne.mockResolvedValue({ id: 'point-1', type: 'entry', active: true });
       vehicleService.findOrCreateByPlate.mockResolvedValue({ id: 'vehicle-1', active: true });
       movementRepoInTx.save.mockResolvedValue({ id: 'mov-1' });
+      movementRepoInTx.createQueryBuilder.mockReturnValue(closeVisitQb);
+      closeVisitQb.getOne.mockResolvedValue(null);
     });
 
     it('deve orquestrar câmera → observação → veículo → movimento', async () => {
@@ -222,6 +233,42 @@ describe('MovementService', () => {
       await expect(service.createFromCamera(dto, companyActor)).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it('saída confirmada fecha a entrada aberta do mesmo veículo na unidade', async () => {
+      pointService.findOne.mockResolvedValue({
+        id: 'point-exit', type: 'exit', active: true, adminUnityId: 'unit-1',
+      });
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement> | Partial<Movement>[]) => data as never);
+      const openEntry = {
+        id: 'mov-entry', type: 'entry', status: 'open', vehicleId: 'vehicle-1',
+        companyId: 'company-1', dateTime: new Date('2026-08-29T11:00:00.000Z'),
+      };
+      closeVisitQb.getOne.mockResolvedValue(openEntry);
+
+      await service.createFromCamera(dto, companyActor);
+
+      expect(closeVisitQb.andWhere).toHaveBeenCalledWith(
+        'point.adminUnityId = :adminUnityId', { adminUnityId: 'unit-1' },
+      );
+      expect(openEntry.status).toBe('closed');
+      const finalSave = movementRepoInTx.save.mock.calls.at(-1)?.[0] as Movement[];
+      expect(finalSave).toHaveLength(2);
+      expect(finalSave.every((m) => m.status === 'closed')).toBe(true);
+    });
+
+    it('saída sem entrada aberta correspondente também é finalizada', async () => {
+      pointService.findOne.mockResolvedValue({
+        id: 'point-exit', type: 'exit', active: true, adminUnityId: 'unit-1',
+      });
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement> | Partial<Movement>[]) => data as never);
+      closeVisitQb.getOne.mockResolvedValue(null);
+
+      await service.createFromCamera(dto, companyActor);
+
+      const finalSave = movementRepoInTx.save.mock.calls.at(-1)?.[0] as Movement;
+      expect(finalSave.status).toBe('closed');
+      expect(finalSave.type).toBe('exit');
     });
   });
 
@@ -480,6 +527,117 @@ describe('MovementService', () => {
           updatedById: 'user-id',
         }),
       );
+    });
+  });
+
+  describe('reconcile', () => {
+    const reconcileQb = {
+      innerJoin: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      addOrderBy: vi.fn().mockReturnThis(),
+      getRawAndEntities: vi.fn(),
+    };
+    const dto = {
+      dateFrom: '2026-09-01T00:00:00.000Z',
+      dateTo: '2026-09-10T00:00:00.000Z',
+    };
+    const movement = (overrides: Partial<Movement>) => ({
+      id: 'mov-1',
+      vehicleId: 'vehicle-1',
+      pointId: 'point-1',
+      companyId: 'company-1',
+      type: 'entry',
+      status: 'open',
+      dateTime: new Date('2026-09-02T10:00:00.000Z'),
+      ...overrides,
+    }) as Movement;
+
+    beforeEach(() => {
+      movementRepoInTx.createQueryBuilder.mockReturnValue(reconcileQb);
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement>) => data);
+      reconcileQb.getRawAndEntities.mockReset();
+    });
+
+    it('fecha entrada e saída pareadas na mesma unidade', async () => {
+      const entry = movement({ id: 'entry-1', type: 'entry', status: 'open' });
+      const exit = movement({
+        id: 'exit-1', type: 'exit', status: 'open',
+        dateTime: new Date('2026-09-02T12:00:00.000Z'),
+      });
+      reconcileQb.getRawAndEntities.mockResolvedValue({
+        entities: [entry, exit],
+        raw: [{ unitId: 'unit-1' }, { unitId: 'unit-1' }],
+      });
+
+      const result = await service.reconcile(dto, companyActor);
+
+      expect(entry.status).toBe('closed');
+      expect(exit.status).toBe('closed');
+      expect(movementRepoInTx.save).toHaveBeenCalledWith([entry, exit]);
+      expect(result).toMatchObject({ analyzed: 2, closed: 2, reopened: 0, unmatchedExits: 0 });
+    });
+
+    it('reabre entrada que ficou sem saída (ex.: saída descartada)', async () => {
+      const entry = movement({ id: 'entry-1', type: 'entry', status: 'closed' });
+      reconcileQb.getRawAndEntities.mockResolvedValue({
+        entities: [entry],
+        raw: [{ unitId: 'unit-1' }],
+      });
+
+      const result = await service.reconcile(dto, companyActor);
+
+      expect(entry.status).toBe('open');
+      expect(movementRepoInTx.save).toHaveBeenCalledWith([entry]);
+      expect(result).toMatchObject({ analyzed: 1, closed: 0, reopened: 1, unmatchedExits: 0 });
+      expect(result.movements[0]).toMatchObject({ previousStatus: 'closed', status: 'open' });
+    });
+
+    it('não altera saída sem entrada correspondente', async () => {
+      const exit = movement({ id: 'exit-1', type: 'exit', status: 'open' });
+      reconcileQb.getRawAndEntities.mockResolvedValue({
+        entities: [exit],
+        raw: [{ unitId: 'unit-1' }],
+      });
+
+      const result = await service.reconcile(dto, companyActor);
+
+      expect(exit.status).toBe('open');
+      expect(movementRepoInTx.save).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ analyzed: 1, unchanged: 1, unmatchedExits: 1 });
+    });
+
+    it('não pareia movimentos de unidades diferentes', async () => {
+      const entry = movement({ id: 'entry-1', type: 'entry', status: 'open' });
+      const exit = movement({
+        id: 'exit-1', type: 'exit', status: 'open',
+        dateTime: new Date('2026-09-02T12:00:00.000Z'),
+      });
+      reconcileQb.getRawAndEntities.mockResolvedValue({
+        entities: [entry, exit],
+        raw: [{ unitId: 'unit-1' }, { unitId: 'unit-2' }],
+      });
+
+      const result = await service.reconcile(dto, companyActor);
+
+      expect(entry.status).toBe('open');
+      expect(exit.status).toBe('open');
+      expect(result).toMatchObject({ analyzed: 2, unchanged: 2, unmatchedExits: 1 });
+    });
+
+    it('rejeita período maior que 31 dias', async () => {
+      await expect(
+        service.reconcile(
+          { dateFrom: '2026-08-01T00:00:00.000Z', dateTo: '2026-09-10T00:00:00.000Z' },
+          companyActor,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('exige companyId para admin global', async () => {
+      await expect(service.reconcile(dto, rootActor)).rejects.toThrow(ForbiddenException);
     });
   });
 

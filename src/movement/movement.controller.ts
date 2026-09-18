@@ -10,6 +10,8 @@ import { MovementResponseDto } from './dto/movement-response.schema.js';
 import { MovementFromCameraResponseDto } from './dto/movement-from-camera-response.schema.js';
 import { FindMovementsDto } from './dto/find-movements.schema.js';
 import { DiscardMovementsDto } from './dto/discard-movements.schema.js';
+import { ReconcileMovementsDto } from './dto/reconcile-movements.schema.js';
+import { ReconcileMovementsResponseDto } from './dto/reconcile-movements-response.schema.js';
 import { PaginatedMovementsResponseDto } from './dto/movement-list-response.schema.js';
 import { PendingReviewMovementDto } from '../auto-registration/dto/pending-review-response.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -128,6 +130,32 @@ export class MovementController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.movementService.discard(dto.ids, user);
+  }
+
+  @Post('reconcile')
+  @ApiOperation({
+    summary: 'Recalcular fechamento de movimentos por período',
+    description:
+      'Reprocessa o pareamento de entrada/saída de um período e recalcula o status dos movimentos confirmados.\n\n' +
+      '**Quando usar:** após descartar ou ajustar movimentos, para reavaliar quais visitas devem ficar `closed`.\n\n' +
+      '**Como funciona:**\n' +
+      '1. Carrega os movimentos `open`/`closed` (com veículo) do período\n' +
+      '2. Agrupa por veículo + unidade administrativa e ordena por data\n' +
+      '3. Uma saída fecha a entrada mais recente ainda em aberto (o par fica `closed`)\n' +
+      '4. Entradas que ficaram sem saída voltam para `open`\n' +
+      '5. Saídas sem entrada correspondente **não** têm o status alterado\n\n' +
+      '`pending_review` e `discarded` não participam do pareamento.\n\n' +
+      '**Limite:** período máximo de 31 dias. Empresa é inferida do usuário; admin global deve informar `companyId`.',
+  })
+  @ZodResponse({ status: 201, type: ReconcileMovementsResponseDto })
+  @ApiResponse({ status: 400, description: 'Período inválido ou maior que 31 dias' })
+  @ApiResponse({ status: 401, description: 'Token JWT ausente ou inválido' })
+  @ApiResponse({ status: 403, description: 'Admin global sem companyId informado' })
+  reconcile(
+    @Body(new ZodValidationPipe(ReconcileMovementsDto)) dto: ReconcileMovementsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.movementService.reconcile(dto, user);
   }
 
   @Get()

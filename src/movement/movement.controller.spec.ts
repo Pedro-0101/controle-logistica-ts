@@ -20,6 +20,7 @@ describe('MovementController', () => {
     update: vi.fn(),
     remove: vi.fn(),
     discard: vi.fn(),
+    reconcile: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -94,5 +95,15 @@ describe('MovementController', () => {
 
     expect(controller.discard({ ids: ['1', '2'] }, user)).toEqual([{ id: '1', status: 'discarded' }]);
     expect(service.discard).toHaveBeenCalledWith(['1', '2'], user);
+  });
+
+  it('reconcile delega ao service com dto e usuário', () => {
+    const dto = { dateFrom: '2026-09-01T00:00:00.000Z', dateTo: '2026-09-10T00:00:00.000Z' };
+    service.reconcile.mockReturnValue({ analyzed: 0, closed: 0, reopened: 0, unchanged: 0, unmatchedExits: 0, movements: [] });
+
+    expect(controller.reconcile(dto as never, user)).toEqual({
+      analyzed: 0, closed: 0, reopened: 0, unchanged: 0, unmatchedExits: 0, movements: [],
+    });
+    expect(service.reconcile).toHaveBeenCalledWith(dto, user);
   });
 });

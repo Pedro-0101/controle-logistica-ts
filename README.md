@@ -254,7 +254,12 @@ retornados são remapeados para as coordenadas da imagem original.
 | POST | `/camera` | Cadastrar câmera IP |
 | POST | `/movement` | Criar movimento (entrada/saída) com veículo já existente |
 | POST | `/movement/from-camera` | Criar movimento a partir da câmera (ANPR) |
+| POST | `/movement/from-observation` | Confirmar observação ANPR e registrar movimento |
 | GET | `/movement` | Listar movimentos |
+| GET | `/movement/pending-review` | Listar movimentos pendentes de revisão |
+| POST | `/movement/:id/recalculate` | Recalcular movimento `pending_review` após correção/cadastro |
+| POST | `/movement/discard` | Descartar movimentos `pending_review` em lote |
+| POST | `/movement/reconcile` | Reprocessar pareamento entrada/saída de um período (máx. 31 dias) |
 | POST | `/anpr/reconhecer-camera/:id` | Reconhecer placa pela câmera |
 | POST | `/anpr/reconhecer-imagem` | Reconhecer placa em imagem base64 |
 | GET | `/anpr/external-interactions` | Auditar chamadas às APIs externas (latência/custo) |
@@ -263,6 +268,21 @@ retornados são remapeados para as coordenadas da imagem original.
 
 Todas as entidades (`company`, `admin-unity`, `point`, `vehicle`, `camera`, `movement`)
 possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
+
+## Status dos movimentos
+
+| Status | Significado |
+|---|---|
+| `open` | Movimento confirmado e ativo (veículo dentro da unidade / visita em andamento) |
+| `closed` | Visita finalizada: a saída foi confirmada e fechou a entrada correspondente |
+| `pending_review` | Placa não reconhecida no cadastro; aguardando correção ou cadastro do veículo |
+| `discarded` | Descartado pelo operador (falso positivo do OCR); não conta como movimentação |
+
+**Fechamento (`open` → `closed`):** quando uma saída confirmada é registrada, o sistema
+fecha a entrada mais recente ainda em aberto do mesmo veículo na mesma unidade. Se um
+movimento for descartado ou ajustado depois, use `POST /movement/reconcile` para
+reprocessar o pareamento do período — entradas que ficaram sem saída voltam para
+`open`, e saídas sem entrada correspondente não têm o status alterado.
 
 ## Códigos de erro
 

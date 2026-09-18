@@ -1,6 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, MoreThanOrEqual, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
@@ -18,7 +24,11 @@ import { Vehicle } from '../vehicle/entities/vehicle.entity.js';
 import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
 import { VehicleService, normalizePlate } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
+import { Point } from '../point/entities/point.entity.js';
 import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
+import type { ReconcileMovementsDtoType } from './dto/reconcile-movements.schema.js';
+
+const MAX_RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class MovementService {
@@ -85,8 +95,53 @@ export class MovementService {
         purpose: dto.purpose, driverName: dto.driverName, notes: dto.notes,
         companyId, createdById: actor.userId,
       }));
+      await this.closeUnitVisit(manager, movement, point, actor.userId);
       return { movement, vehicle };
     });
+  }
+
+  /**
+   * Fecha o ciclo de visita de uma unidade.
+   *
+   * Quando um movimento de saída confirmado é registrado, o movimento de entrada
+   * em aberto mais recente do mesmo veículo, na mesma empresa e mesma unidade
+   * administrativa, é finalizado (`closed`). O próprio movimento de saída também
+   * passa para `closed`, indicando que a passagem pelo ponto foi concluída.
+   */
+  private async closeUnitVisit(
+    manager: EntityManager,
+    movement: Movement,
+    point: Point,
+    actorId: string,
+  ): Promise<void> {
+    if (movement.type !== 'exit' || movement.status !== 'open' || !movement.vehicleId) {
+      return;
+    }
+
+    const repository = manager.getRepository(Movement);
+    const openEntry = await repository
+      .createQueryBuilder('m')
+      .innerJoin('points', 'point', 'point.id = m.pointId')
+      .where('m.vehicleId = :vehicleId', { vehicleId: movement.vehicleId })
+      .andWhere('m.companyId = :companyId', { companyId: movement.companyId })
+      .andWhere('m.type = :entryType', { entryType: 'entry' })
+      .andWhere('m.status = :openStatus', { openStatus: 'open' })
+      .andWhere('point.adminUnityId = :adminUnityId', { adminUnityId: point.adminUnityId })
+      .andWhere('m.dateTime <= :dateTime', { dateTime: movement.dateTime })
+      .orderBy('m.dateTime', 'DESC')
+      .getOne();
+
+    movement.status = 'closed';
+    movement.updatedById = actorId;
+
+    if (!openEntry) {
+      await repository.save(movement);
+      return;
+    }
+
+    openEntry.status = 'closed';
+    openEntry.updatedById = actorId;
+    await repository.save([openEntry, movement]);
   }
 
   private resolveMovementType(
@@ -356,6 +411,120 @@ export class MovementService {
     });
   }
 
+  /**
+   * Recalcula em lote o pareamento de entradas e saídas de um período.
+   *
+   * Para cada veículo + unidade, os movimentos confirmados (`open`/`closed`) são
+   * ordenados por data e pareados: uma saída fecha a entrada mais recente ainda
+   * em aberto. Entradas que sobraram voltam para `open` e saídas sem entrada
+   * correspondente permanecem com o status atual. Movimentos `pending_review` e
+   * `discarded` não participam do pareamento.
+   */
+  async reconcile(dto: ReconcileMovementsDtoType, actor: Actor) {
+    const scope = resolveCompanyScope(actor);
+    const companyId = scope.mode === 'company' ? scope.companyId : dto.companyId;
+    if (!companyId) {
+      throw new ForbiddenException(
+        'Informe companyId (admin global) ou esteja vinculado a uma empresa para recalcular',
+      );
+    }
+
+    const dateFrom = new Date(dto.dateFrom);
+    const dateTo = new Date(dto.dateTo);
+    if (Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime()) || dateFrom > dateTo) {
+      throw new BadRequestException('Período inválido: dateFrom deve ser anterior ou igual a dateTo');
+    }
+    if (dateTo.getTime() - dateFrom.getTime() > MAX_RECONCILE_WINDOW_MS) {
+      throw new BadRequestException('Período máximo permitido para recálculo é de 31 dias');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(Movement);
+      const { entities, raw } = await repository
+        .createQueryBuilder('m')
+        .innerJoin(Point, 'point', 'point.id = m.pointId')
+        .addSelect('point.adminUnityId', 'unitId')
+        .where('m.companyId = :companyId', { companyId })
+        .andWhere('m.dateTime >= :dateFrom', { dateFrom })
+        .andWhere('m.dateTime <= :dateTo', { dateTo })
+        .andWhere('m.vehicleId IS NOT NULL')
+        .andWhere('m.status IN (:...statuses)', { statuses: ['open', 'closed'] })
+        .orderBy('m.dateTime', 'ASC')
+        .addOrderBy('m.createdAt', 'ASC')
+        .getRawAndEntities();
+
+      const groups = new Map<string, Movement[]>();
+      entities.forEach((movement, index) => {
+        const unitId = raw[index]?.unitId as string | undefined;
+        if (!unitId || !movement.vehicleId) return;
+        const key = `${movement.vehicleId}::${unitId}`;
+        const group = groups.get(key);
+        if (group) group.push(movement);
+        else groups.set(key, [movement]);
+      });
+
+      const changes: Array<{ movement: Movement; previousStatus: string }> = [];
+      let unmatchedExits = 0;
+
+      for (const group of groups.values()) {
+        const openEntries: Movement[] = [];
+        for (const movement of group) {
+          if (movement.type === 'entry') {
+            openEntries.push(movement);
+            continue;
+          }
+          if (movement.type !== 'exit') continue;
+
+          const entry = openEntries.pop();
+          if (!entry) {
+            unmatchedExits += 1;
+            continue;
+          }
+          this.stageStatusChange(entry, 'closed', actor.userId, changes);
+          this.stageStatusChange(movement, 'closed', actor.userId, changes);
+        }
+        for (const entry of openEntries) {
+          this.stageStatusChange(entry, 'open', actor.userId, changes);
+        }
+      }
+
+      if (changes.length > 0) {
+        await repository.save(changes.map((change) => change.movement));
+      }
+
+      return {
+        range: { dateFrom: dto.dateFrom, dateTo: dto.dateTo },
+        companyId,
+        analyzed: entities.length,
+        closed: changes.filter((change) => change.movement.status === 'closed').length,
+        reopened: changes.filter((change) => change.movement.status === 'open').length,
+        unchanged: entities.length - changes.length,
+        unmatchedExits,
+        movements: changes.map((change) => ({
+          id: change.movement.id,
+          vehicleId: change.movement.vehicleId,
+          pointId: change.movement.pointId ?? null,
+          type: change.movement.type as 'entry' | 'exit',
+          dateTime: change.movement.dateTime.toISOString(),
+          previousStatus: change.previousStatus as 'open' | 'closed',
+          status: change.movement.status as 'open' | 'closed',
+        })),
+      };
+    });
+  }
+
+  private stageStatusChange(
+    movement: Movement,
+    status: 'open' | 'closed',
+    actorId: string,
+    changes: Array<{ movement: Movement; previousStatus: string }>,
+  ): void {
+    if (movement.status === status) return;
+    changes.push({ movement, previousStatus: movement.status });
+    movement.status = status;
+    movement.updatedById = actorId;
+  }
+
   async createAutoRegistered(params: {
     observation: CameraObservation;
     vehicle: Vehicle | null;
@@ -394,7 +563,9 @@ export class MovementService {
         createdById: systemUserId,
       });
 
-      return manager.getRepository(Movement).save(movement);
+      const saved = await manager.getRepository(Movement).save(movement);
+      await this.closeUnitVisit(manager, saved, point, systemUserId);
+      return saved;
     });
   }
 
