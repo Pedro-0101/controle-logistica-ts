@@ -143,12 +143,12 @@ const RESERVE_CODE_SQL = `
   INSERT INTO "vehicle_code_sequences" ("companyId", "type", "lastValue")
   VALUES (
     $1,
-    $2,
+    $2::varchar,
     COALESCE((
       SELECT MAX(CAST(SUBSTRING(v."code" FROM 4) AS INTEGER))
       FROM "vehicles" v
       WHERE v."companyId" = $1
-        AND v."type" = $2
+        AND v."type" = $2::varchar
         AND v."code" ~ '^(TER|VIS)[0-9]+$'
     ), 0) + 1
   )
