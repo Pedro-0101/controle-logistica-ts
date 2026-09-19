@@ -8,6 +8,7 @@ import { AnprModule } from '../anpr/anpr.module.js';
 import { VehicleModule } from '../vehicle/vehicle.module.js';
 import { PointModule } from '../point/point.module.js';
 import { MonitoringModule } from '../monitoring/monitoring.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module.js';
     VehicleModule,
     PointModule,
     MonitoringModule,
+    StorageModule,
   ],
   controllers: [MovementController],
   providers: [MovementService],

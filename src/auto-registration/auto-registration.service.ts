@@ -2,8 +2,6 @@ import { Injectable, Logger, NotFoundException, OnApplicationBootstrap, OnModule
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { ExternalInteractionService } from '../anpr/external-interaction.service.js';
@@ -17,6 +15,7 @@ import { VehicleService } from '../vehicle/vehicle.service.js';
 import { MovementService } from '../movement/movement.service.js';
 import { CompanyConfigService } from '../company-config/company-config.service.js';
 import { PointService } from '../point/point.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { Camera } from '../camera/entities/camera.entity.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { CurrentObservation } from '../monitoring/observation.schema.js';
@@ -66,6 +65,7 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     private readonly movementService: MovementService,
     private readonly companyConfigService: CompanyConfigService,
     private readonly pointService: PointService,
+    private readonly storage: StorageService,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
     private readonly config: ConfigService,
   ) {}
@@ -577,13 +577,11 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     try {
       const buffer = imageBuffer ?? await this.anpr.observationImage(camera.id, observation.id);
       const date = new Date().toISOString().slice(0, 10);
-      const dir = path.join('storage', 'evidence', companyId, date);
-      fs.mkdirSync(dir, { recursive: true });
-      const filePath = path.join(dir, `${observation.id}.jpg`);
-      fs.writeFileSync(filePath, buffer);
-      observation.photoPath = filePath;
+      const key = `evidence/${companyId}/${date}/${observation.id}.jpg`;
+      await this.storage.putEvidence(key, buffer, 'image/jpeg');
+      observation.photoPath = key;
       await this.observations.save(observation);
-      this.logger.debug(`Evidence photo saved: ${filePath}`);
+      this.logger.debug(`Evidence photo saved: ${key}`);
     } catch (err) {
       this.logger.warn(`Failed to save evidence photo: ${String(err)}`);
     }

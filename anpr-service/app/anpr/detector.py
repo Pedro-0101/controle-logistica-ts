@@ -54,8 +54,18 @@ def _carregar_modelo():
     if _model is not None:
         return _model
 
+    import torch
     from ultralytics import YOLO
 
+    # Limita o pool nativo do PyTorch: em máquinas com pouca RAM cada thread
+    # extra multiplica buffers de ativação e pode causar OOM (3221225477 no Windows).
+    try:
+        torch.set_num_threads(settings.anpr_native_threads)
+        if settings.anpr_native_threads == 1:
+            torch.set_num_interop_threads(1)
+    except (RuntimeError, ValueError):
+        # set_num_interop_threads só pode ser chamado antes do primeiro trabalho.
+        pass
     _model = YOLO(_resolver_modelo())
     return _model
 

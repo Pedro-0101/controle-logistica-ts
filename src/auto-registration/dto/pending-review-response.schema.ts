@@ -18,11 +18,14 @@ import { createZodDto } from 'zod-nest';
  */
 export const pendingReviewMovementSchema = z.object({
   id: z.string().meta({
-    description: 'UUID único do movimento. Usar no endpoint POST /movement/:id/recalculate para reprocessar.',
+    description:
+      'UUID único do movimento.\n\n' +
+      '- `POST /movement/:id/recalculate` — reprocessar após correção/cadastro do veículo\n' +
+      '- `GET /movement/:id/evidence` — foto de evidência (JPEG) para validação visual',
     examples: ['d3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b'],
   }),
   observationId: z.string().nullable().meta({
-    description: 'UUID da observação ANPR vinculada. Usar para buscar a foto de evidência via GET /anpr/monitors/:cameraId/observations/:observationId/image',
+    description: 'UUID da observação ANPR vinculada. Referência interna — para a foto use GET /movement/:id/evidence com o id do movimento.',
   }),
   pointId: z.string().nullable().meta({
     description: 'UUID do ponto (portão) onde a câmera está instalada. Usar para identificar qual portão o veículo passou.',
@@ -52,8 +55,10 @@ export const pendingReviewMovementSchema = z.object({
     description: 'Indica que o movimento foi criado automaticamente pelo sistema ANPR (true) ou manualmente pelo operador (false).',
   }),
   photoPath: z.string().nullable().meta({
-    description: 'Caminho local do arquivo de foto de evidência (JPEG). Disponível quando anprSaveUnrecognizedPhotos=true na config da empresa. Pode ser null se a foto não pôde ser salva.',
-    examples: ['storage/evidence/a1b2c3d4/2026-08-29/d3f2a1b0.jpg'],
+    description:
+      'Chave da foto de evidência no storage (MinIO/S3 ou disco local). Disponível quando anprSaveUnrecognizedPhotos=true na config da empresa. Pode ser null se a foto não pôde ser salva.\n\n' +
+      'Para exibir a imagem, prefira buscar pelo ID do movimento: `GET /movement/:id/evidence` (retorna o JPEG com o mesmo escopo de empresa).',
+    examples: ['evidence/a1b2c3d4/2026-08-29/d3f2a1b0.jpg'],
   }),
   createdAt: z.string().datetime({ offset: true }).meta({
     description: 'Data e hora em que o registro foi criado no banco de dados.',

@@ -25,6 +25,7 @@ import { CreateMovementFromObservationDto } from './dto/create-movement-from-obs
 import { VehicleService, normalizePlate } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
 import { Point } from '../point/entities/point.entity.js';
+import { StorageService } from '../storage/storage.service.js';
 import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
 import type { ReconcileMovementsDtoType } from './dto/reconcile-movements.schema.js';
 
@@ -39,6 +40,7 @@ export class MovementService {
     private readonly dataSource: DataSource,
     private readonly vehicleService: VehicleService,
     private readonly pointService: PointService,
+    private readonly storage: StorageService,
   ) {}
 
   async create(createMovementDto: CreateMovementDto, actor: Actor) {
@@ -603,6 +605,33 @@ export class MovementService {
   async findObservationPhotoPath(observationId: string): Promise<{ photoPath: string | null } | null> {
     const obs = await this.dataSource.getRepository(CameraObservation).findOneBy({ id: observationId });
     return obs ? { photoPath: obs.photoPath } : null;
+  }
+
+  /**
+   * Recupera a foto de evidência de um movimento a partir do seu ID.
+   *
+   * A resolução passa por movimento → observação → chave no storage
+   * (MinIO ou disco local). Lança 404 quando o movimento não pertence ao
+   * escopo do usuário, não possui observação vinculada, não tem foto salva
+   * ou o objeto não existe mais no armazenamento.
+   */
+  async getEvidence(id: string, actor: Actor): Promise<{ buffer: Buffer; contentType: string }> {
+    const movement = await this.findOne(id, actor);
+    if (!movement.observationId) {
+      throw new NotFoundException('Movimento não possui foto de evidência');
+    }
+    const observation = await this.dataSource
+      .getRepository(CameraObservation)
+      .findOneBy({ id: movement.observationId, companyId: movement.companyId });
+    if (!observation?.photoPath) {
+      throw new NotFoundException('Foto de evidência não disponível para este movimento');
+    }
+    try {
+      const buffer = await this.storage.getEvidence(observation.photoPath);
+      return { buffer, contentType: 'image/jpeg' };
+    } catch {
+      throw new NotFoundException('Foto de evidência não encontrada no armazenamento');
+    }
   }
 
   private async validateReferences(vehicleId: string | null, pointId: string | undefined, type: string, actor: Actor) {

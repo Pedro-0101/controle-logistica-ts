@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { StreamableFile } from '@nestjs/common';
 import { MovementController } from './movement.controller.js';
 import { MovementService } from './movement.service.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
@@ -17,6 +18,7 @@ describe('MovementController', () => {
     createFromCamera: vi.fn(),
     findAll: vi.fn(),
     findOne: vi.fn(),
+    getEvidence: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
     discard: vi.fn(),
@@ -73,6 +75,16 @@ describe('MovementController', () => {
 
     expect(controller.findOne('1', user)).toEqual({ id: '1' });
     expect(service.findOne).toHaveBeenCalledWith('1', user);
+  });
+
+  it('evidence delega ao service e devolve a imagem', async () => {
+    const buffer = Buffer.from('jpeg');
+    service.getEvidence.mockResolvedValue({ buffer, contentType: 'image/jpeg' });
+
+    const result = await controller.evidence('1', user);
+
+    expect(service.getEvidence).toHaveBeenCalledWith('1', user);
+    expect(result).toBeInstanceOf(StreamableFile);
   });
 
   it('update delega ao service com id, dto e usuário', () => {

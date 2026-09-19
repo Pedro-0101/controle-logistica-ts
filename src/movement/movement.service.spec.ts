@@ -13,6 +13,7 @@ import { AnprService } from '../anpr/anpr.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const rootActor: Actor = {
@@ -48,8 +49,10 @@ describe('MovementService', () => {
     fresh: vi.fn(),
     assertCurrent: vi.fn(),
   };
+  const storageService = { getEvidence: vi.fn() };
   const observationRepo = {
     findOne: vi.fn(),
+    findOneBy: vi.fn(),
   };
   const movementRepoInTx = {
     findOneBy: vi.fn(),
@@ -78,18 +81,17 @@ describe('MovementService', () => {
       execute: vi.fn().mockResolvedValue(undefined),
     }),
   };
+  const resolveRepository = (entity: unknown) => {
+    const name = (entity as { name?: string }).name ?? '';
+    if (name === 'CameraObservation') return observationRepo;
+    if (name === 'Movement') return movementRepoInTx;
+    if (name === 'Vehicle') return vehicleRepoInTx;
+    return {};
+  };
   const dataSource = {
+    getRepository: vi.fn(resolveRepository),
     transaction: vi.fn(async (fn: (manager: { getRepository: (entity: unknown) => unknown }) => Promise<unknown>) => {
-      const manager = {
-        getRepository: (entity: unknown) => {
-          const name = (entity as { name?: string }).name ?? '';
-          if (name === 'CameraObservation') return observationRepo;
-          if (name === 'Movement') return movementRepoInTx;
-          if (name === 'Vehicle') return vehicleRepoInTx;
-          return {};
-        },
-      };
-      return fn(manager);
+      return fn({ getRepository: resolveRepository });
     }),
   };
 
@@ -107,6 +109,7 @@ describe('MovementService', () => {
         { provide: VehicleService, useValue: vehicleService },
         { provide: PointService, useValue: pointService },
         { provide: MonitoringService, useValue: monitoringService },
+        { provide: StorageService, useValue: storageService },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -503,6 +506,46 @@ describe('MovementService', () => {
       await expect(service.findOne('1', companyActor)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('getEvidence', () => {
+    beforeEach(() => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'mov-1',
+        companyId: 'company-1',
+        observationId: 'obs-1',
+      });
+    });
+
+    it('retorna o JPEG da observação vinculada', async () => {
+      observationRepo.findOneBy.mockResolvedValue({ id: 'obs-1', photoPath: 'evidence/c/2026-09-18/obs-1.jpg' });
+      storageService.getEvidence.mockResolvedValue(Buffer.from('jpeg'));
+
+      const result = await service.getEvidence('mov-1', companyActor);
+
+      expect(observationRepo.findOneBy).toHaveBeenCalledWith({ id: 'obs-1', companyId: 'company-1' });
+      expect(storageService.getEvidence).toHaveBeenCalledWith('evidence/c/2026-09-18/obs-1.jpg');
+      expect(result).toEqual({ buffer: Buffer.from('jpeg'), contentType: 'image/jpeg' });
+    });
+
+    it('lança 404 quando o movimento não tem observação', async () => {
+      repository.findOneBy.mockResolvedValue({ id: 'mov-1', companyId: 'company-1', observationId: null });
+
+      await expect(service.getEvidence('mov-1', companyActor)).rejects.toThrow(NotFoundException);
+    });
+
+    it('lança 404 quando não há foto salva', async () => {
+      observationRepo.findOneBy.mockResolvedValue({ id: 'obs-1', photoPath: null });
+
+      await expect(service.getEvidence('mov-1', companyActor)).rejects.toThrow(NotFoundException);
+    });
+
+    it('lança 404 quando o objeto não existe no storage', async () => {
+      observationRepo.findOneBy.mockResolvedValue({ id: 'obs-1', photoPath: 'evidence/x.jpg' });
+      storageService.getEvidence.mockRejectedValue(new Error('not found'));
+
+      await expect(service.getEvidence('mov-1', companyActor)).rejects.toThrow(NotFoundException);
     });
   });
 

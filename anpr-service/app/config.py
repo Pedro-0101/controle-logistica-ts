@@ -1,11 +1,21 @@
 """Configurações do microserviço ANPR carregadas de variáveis de ambiente / .env."""
 
+import os
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # anpr-service/
+
+# Limites de threads nativas definidos ANTES de importar torch/paddle. Em
+# máquinas com pouca RAM, os pools OpenMP/MKL multiplicam o consumo de memória
+# e podem provocar Access Violation/OOM (código 3221225477 no Windows).
+os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
+os.environ.setdefault("MKL_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
+os.environ.setdefault("OPENBLAS_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
+os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "False")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
 
 class Settings(BaseSettings):
@@ -19,8 +29,14 @@ class Settings(BaseSettings):
     anpr_warmup: bool = False
     # Detecção YOLO: modelo vazio = auto (weights/best.pt local, senão HuggingFace).
     anpr_yolo_model: str = ""
-    anpr_yolo_imgsz: int = Field(640, ge=128, le=4096)
+    # 480 é suficiente para placas grandes no frame e usa bem menos memória que 640.
+    anpr_yolo_imgsz: int = Field(480, ge=128, le=4096)
     anpr_yolo_conf: float = Field(0.25, gt=0.0, le=1.0)
+    # Nº de threads nativas dos runtimes (OpenMP/MKL). 1 mantém a memória baixa.
+    anpr_native_threads: int = Field(1, ge=1, le=8)
+    # Fallback do PaddleOCR na imagem inteira (sem YOLO). Desligar economiza
+    # muito tempo/memória: o caminho do YOLO já cobre a maioria dos frames.
+    anpr_full_frame_fallback: bool = False
     # Pré-processamento antes do OCR (CLAHE + redução de ruído + upscale).
     anpr_preprocessar: bool = True
     anpr_upscale_altura_min: int = Field(64, ge=0, le=512)

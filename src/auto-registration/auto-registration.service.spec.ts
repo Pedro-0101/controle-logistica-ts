@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import * as fs from 'node:fs';
 import { AutoRegistrationService } from './auto-registration.service.js';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { AnprService } from '../anpr/anpr.service.js';
@@ -12,14 +11,10 @@ import { VehicleService } from '../vehicle/vehicle.service.js';
 import { MovementService } from '../movement/movement.service.js';
 import { CompanyConfigService } from '../company-config/company-config.service.js';
 import { PointService } from '../point/point.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { Camera } from '../camera/entities/camera.entity.js';
 import type { CurrentObservation } from '../monitoring/observation.schema.js';
-
-vi.mock('node:fs', () => ({
-  mkdirSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}));
 
 const camera = {
   id: 'camera-1',
@@ -75,6 +70,7 @@ describe('AutoRegistrationService', () => {
   };
   let companyConfigService: { findOne: ReturnType<typeof vi.fn>; createWithDefaults: ReturnType<typeof vi.fn> };
   let pointService: { findOne: ReturnType<typeof vi.fn> };
+  let storage: { putEvidence: ReturnType<typeof vi.fn>; getEvidence: ReturnType<typeof vi.fn> };
   let observations: { save: ReturnType<typeof vi.fn>; manager: { connection: { query: ReturnType<typeof vi.fn> } } };
   let configMock: { get: ReturnType<typeof vi.fn> };
   let companyConfig: ReturnType<typeof baseCompanyConfig>;
@@ -120,6 +116,10 @@ describe('AutoRegistrationService', () => {
       createWithDefaults: vi.fn(async () => companyConfig),
     };
     pointService = { findOne: vi.fn(async () => point) };
+    storage = {
+      putEvidence: vi.fn(async (key: string) => key),
+      getEvidence: vi.fn(async () => Buffer.from('image')),
+    };
     observations = {
       save: vi.fn(async (value: Record<string, unknown>) => value),
       manager: { connection: { query: vi.fn(async () => [{ id: 'system-user-1' }]) } },
@@ -137,6 +137,7 @@ describe('AutoRegistrationService', () => {
         { provide: MovementService, useValue: movementService },
         { provide: CompanyConfigService, useValue: companyConfigService },
         { provide: PointService, useValue: pointService },
+        { provide: StorageService, useValue: storage },
         { provide: getRepositoryToken(CameraObservation), useValue: observations },
         { provide: ConfigService, useValue: configMock },
       ],
@@ -383,15 +384,18 @@ describe('AutoRegistrationService', () => {
     await service.reconcile();
 
     expect(anpr.observationImage).toHaveBeenCalledTimes(1);
+    expect(storage.putEvidence).toHaveBeenCalledWith(
+      expect.stringMatching(/^evidence\/company-1\/\d{4}-\d{2}-\d{2}\/obs-1\.jpg$/),
+      Buffer.from('image'),
+      'image/jpeg',
+    );
     expect(observations.save).toHaveBeenCalled();
   });
 
   it('não quebra quando o salvamento da foto de evidência falha', async () => {
     companyConfig.anprSaveUnrecognizedPhotos = true;
     vehicleService.findByPlate.mockResolvedValue(null);
-    (fs.writeFileSync as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
-      throw new Error('disco cheio');
-    });
+    storage.putEvidence.mockRejectedValueOnce(new Error('minio fora do ar'));
 
     await expect(service.reconcile()).resolves.toBeUndefined();
     expect(movementService.createAutoRegistered).toHaveBeenCalled();

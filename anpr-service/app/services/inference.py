@@ -80,7 +80,10 @@ class InferenceScheduler:
 
     @staticmethod
     def _infer(image, fallback):
-        return get_recognizer().reconhecer_melhor(image, full_frame_fallback=fallback)
+        # A config global é um teto: se desligada, nunca roda o fallback pesado
+        # do PaddleOCR na imagem inteira (economiza tempo e memória).
+        allow_fallback = fallback and settings.anpr_full_frame_fallback
+        return get_recognizer().reconhecer_melhor(image, full_frame_fallback=allow_fallback)
 
     async def close(self):
         self.closed = True

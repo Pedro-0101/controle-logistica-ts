@@ -1,5 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  ParseUUIDPipe,
+  StreamableFile,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+  ApiProduces,
+} from '@nestjs/swagger';
 import { ZodValidationPipe, ZodResponse, ZodQuery } from 'zod-nest';
 import { MovementService } from './movement.service.js';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
@@ -183,11 +201,14 @@ export class MovementController {
       '**Cada item do array contém:**\n' +
       '- `id`: UUID do movimento (usar no endpoint de recálculo)\n' +
       '- `recognizedPlate`: Placa que o OCR leu (pode conter erros de leitura)\n' +
-      '- `photoPath`: Caminho local da foto de evidência (null se não salva)\n' +
+      '- `photoPath`: Chave da foto de evidência no storage (null se não salva). ' +
+      'Para exibir, use `GET /movement/:id/evidence`\n' +
       '- `dateTime`: Data/hora ISO 8601 em que o veículo passou na câmera\n' +
       '- `type`: `entry` (entrada) ou `exit` (saída)\n' +
       '- `pointId`: UUID do ponto/portão da câmera\n' +
-      '- `observationId`: UUID da observação ANPR (para buscar evidência via Python)\n\n' +
+      '- `observationId`: UUID da observação ANPR vinculada\n\n' +
+      '**Foto de evidência:** para exibir a imagem ao operador, use `GET /movement/:id/evidence` ' +
+      '(o `photoPath` é apenas a chave interna no storage).\n\n' +
       '**Importante:** esta rota é estática e precisa ser declarada antes de `GET /movement/:id` ' +
       'para não ser capturada pelo parâmetro dinâmico.',
   })
@@ -221,6 +242,42 @@ export class MovementController {
         };
       }),
     );
+  }
+
+  @Get(':id/evidence')
+  @ApiOperation({
+    summary: 'Buscar foto de evidência do movimento',
+    description:
+      'Retorna a foto de evidência (JPEG) de um movimento a partir do seu ID.\n\n' +
+      '**Quando usar:** movimentos automáticos (`pending_review` ou `open`) cuja placa foi lida por ANPR. ' +
+      'A imagem só existe quando `anprSaveUnrecognizedPhotos=true` na config da empresa/ponto e a placa não foi encontrada no cadastro de veículos.\n\n' +
+      '**Resolução:** o backend localiza a observação vinculada ao movimento e busca o arquivo no storage ' +
+      '(MinIO ou disco local).\n\n' +
+      '**Uso no frontend:** como a rota exige o token JWT no header `Authorization`, faça o download via `fetch` ' +
+      'e monte um `blob:` URL para exibir no `<img>`:\n' +
+      '```js\n' +
+      "const res = await fetch(`/movement/${id}/evidence`, { headers: { Authorization: `Bearer ${token}` } });\n" +
+      "const url = URL.createObjectURL(await res.blob());\n" +
+      '```\n\n' +
+      '**Erros comuns:**\n' +
+      '- `404`: movimento inexistente/fora da empresa, sem observação vinculada, sem foto salva ou objeto ausente no storage',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID do movimento',
+    example: 'd3f2a1b0-4c5e-4d6f-8a7b-9c0d1e2f3a4b',
+  })
+  @ApiProduces('image/jpeg')
+  @ApiResponse({
+    status: 200,
+    description: 'Imagem JPEG da evidência',
+    content: { 'image/jpeg': {} },
+  })
+  @ApiResponse({ status: 401, description: 'Token JWT ausente ou inválido' })
+  @ApiResponse({ status: 404, description: 'Movimento ou foto de evidência não encontrados' })
+  async evidence(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    const { buffer, contentType } = await this.movementService.getEvidence(id, user);
+    return new StreamableFile(buffer, { type: contentType, length: buffer.length });
   }
 
   @Get(':id')

@@ -30,6 +30,9 @@ import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
  * `GET /movement/pending-review` retorna todos os movimentos `pending_review`
  * O front deve exibir: placa reconhecida, data/hora, foto (se disponível), botão de ação
  *
+ * A foto de evidência é obtida por `GET /movement/:id/evidence` (retorna o JPEG).
+ * Use o `id` do movimento — não monte a URL a partir de `photoPath` (chave interna do storage).
+ *
  * #### 4. Correção / Cadastro (front)
  * Duas opções para o usuário:
  * - **Opção A (placa errada):** Se o veículo já existe com outra placa, corrija o veículo
@@ -55,6 +58,7 @@ import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
  * | Método | Rota | Descrição |
  * |--------|------|-----------|
  * | `GET` | `/movement/pending-review` | Listar movimentos pendentes de revisão |
+ * | `GET` | `/movement/:id/evidence` | Foto de evidência (JPEG) do movimento |
  * | `POST` | `/movement/:id/recalculate` | Recalcular movimento após correção |
  * | `POST` | `/movement/discard` | Descartar movimentos pendentes em lote |
  */

@@ -9,6 +9,7 @@ import { VehicleModule } from '../vehicle/vehicle.module.js';
 import { PointModule } from '../point/point.module.js';
 import { CompanyConfigModule } from '../company-config/company-config.module.js';
 import { MovementModule } from '../movement/movement.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { MovementModule } from '../movement/movement.module.js';
     PointModule,
     CompanyConfigModule,
     MovementModule,
+    StorageModule,
   ],
   controllers: [AutoRegistrationController],
   providers: [AutoRegistrationService],

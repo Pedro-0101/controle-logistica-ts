@@ -11,3 +11,4 @@ process.env.DB_SYNCHRONIZE = 'true';
 process.env.MONITORING_ENABLED = 'false';
 process.env.JWT_SECRET = 'isolated-e2e-signing-secret';
 process.env.ANPR_SERVICE_URL = 'http://127.0.0.1:1';
+process.env.STORAGE_DRIVER = 'local';

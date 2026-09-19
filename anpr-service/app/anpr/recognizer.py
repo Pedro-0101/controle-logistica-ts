@@ -9,12 +9,26 @@ Faz fallback para PaddleOCR completo se YOLO não detectar nada.
 """
 
 import os
+import threading
 from dataclasses import dataclass, replace
 
 import numpy as np
 
 from .plate import Placa, normalizar_placa
 from .preprocessamento import cortar_bordas, preparar_recorte, realcar_imagem
+
+# Deve ser definido ANTES de importar torch/paddle: evita que os runtimes
+# nativos (OpenMP/MKL) disputem threads e provoquem Access Violation
+# (0xC0000005) no Windows durante inferência concorrente.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "False")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
+# YOLO (PyTorch) e PaddleOCR compartilham recursos nativos e não são seguros
+# para inferência simultânea no mesmo processo: serializa todas as inferências.
+_INFERENCE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -47,10 +61,6 @@ def _extrair_box(boxes, indice: int) -> tuple[float, float, float, float] | None
 
 class PlacaRecognizer:
     def __init__(self, lang: str = "en") -> None:
-        # Definidas antes do import do paddleocr para evitar falhas de
-        # oneDNN/MKLDNN em algumas CPUs.
-        os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "False")
-        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
         from paddleocr import PaddleOCR
 
         self._ocr = PaddleOCR(
@@ -97,7 +107,8 @@ class PlacaRecognizer:
         from ..config import settings
         from .detector import detectar_placas, recortar_placa
 
-        deteccoes = detectar_placas(imagem)
+        with _INFERENCE_LOCK:
+            deteccoes = detectar_placas(imagem)
         if not deteccoes:
             return []
 
@@ -120,7 +131,8 @@ class PlacaRecognizer:
             if preprocessar:
                 recorte = preparar_recorte(recorte)
 
-            resultado = self._ocr.predict(recorte)
+            with _INFERENCE_LOCK:
+                resultado = self._ocr.predict(recorte)
             for pagina in resultado:
                 textos = pagina["rec_texts"]
                 scores = pagina["rec_scores"]
@@ -140,7 +152,8 @@ class PlacaRecognizer:
 
     def _reconhecer_paddle_completo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
         """Fallback: PaddleOCR na imagem inteira (sem YOLO), com realce de contraste."""
-        resultado = self._ocr.predict(realcar_imagem(imagem))
+        with _INFERENCE_LOCK:
+            resultado = self._ocr.predict(realcar_imagem(imagem))
         candidatos: list[CandidatoPlaca] = []
         for pagina in resultado:
             textos = pagina["rec_texts"]
