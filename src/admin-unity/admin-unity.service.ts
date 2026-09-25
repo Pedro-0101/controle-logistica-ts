@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateAdminUnityDto } from './dto/create-admin-unity.dto.js';
-import { UpdateAdminUnityDto } from './dto/update-admin-unity.dto.js';
+import { CreateAdminUnityDto } from './dto/create-admin-unity.schema.js';
+import { UpdateAdminUnityDto } from './dto/update-admin-unity.schema.js';
 import { AdminUnity } from './entities/admin-unity.entity.js';
 import {
   type Actor,

@@ -1,16 +1,10 @@
 import { z } from 'zod';
 import { createZodDto } from 'zod-nest';
+import { paginationSchema } from '../../common/pagination.schema.js';
 
 export const findMovementsSchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1).meta({
-      description: 'Número da página (começa em 1)',
-      examples: [1],
-    }),
-    limit: z.coerce.number().int().min(1).max(100).default(20).meta({
-      description: 'Quantidade de registros por página (máx. 100)',
-      examples: [20],
-    }),
+    ...paginationSchema.shape,
     type: z.enum(['entry', 'exit']).optional().meta({
       description: 'Filtrar por tipo de movimento',
       examples: ['entry'],

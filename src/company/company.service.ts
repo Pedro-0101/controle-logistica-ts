@@ -5,8 +5,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
-import { CreateCompanyDto } from './dto/create-company.dto.js';
-import { UpdateCompanyDto } from './dto/update-company.dto.js';
+import { CreateCompanyDto } from './dto/create-company.schema.js';
+import { UpdateCompanyDto } from './dto/update-company.schema.js';
 import { Company } from './entities/company.entity.js';
 import { User } from '../user/entities/user.entity.js';
 import { UserService } from '../user/user.service.js';

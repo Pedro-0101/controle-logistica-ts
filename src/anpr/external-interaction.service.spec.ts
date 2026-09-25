@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException } from '@nestjs/common';
 import { ExternalInteractionService } from './external-interaction.service.js';
+import { ExternalInteractionUsageService } from './external-interaction-usage.service.js';
 import { ExternalInteraction } from './entities/external-interaction.entity.js';
 import type { Actor } from '../auth/company-scope.js';
 
@@ -68,6 +69,7 @@ describe('ExternalInteractionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ExternalInteractionService,
+        ExternalInteractionUsageService,
         { provide: getRepositoryToken(ExternalInteraction), useValue: repository },
         { provide: ConfigService, useValue: config },
       ],

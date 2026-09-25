@@ -1,14 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CreateMovementDto } from './dto/create-movement.schema.js';
 import { CreateMovementFromCameraDto } from './dto/create-movement-from-camera.schema.js';
+import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
 import { UpdateMovementDto } from './dto/update-movement.schema.js';
 import { Movement } from './entities/movement.entity.js';
 import {
@@ -18,29 +18,32 @@ import {
   resolveCompanyScope,
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
-import { MonitoringService } from '../monitoring/monitoring.service.js';
-import { CameraObservation } from '../monitoring/observation.entity.js';
 import { Vehicle } from '../vehicle/entities/vehicle.entity.js';
-import { CreateMovementFromObservationDto } from './dto/create-movement-from-observation.schema.js';
-import { VehicleService, normalizePlate } from '../vehicle/vehicle.service.js';
+import { VehicleService } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
-import { Point } from '../point/entities/point.entity.js';
-import { StorageService } from '../storage/storage.service.js';
+import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
 import type { ReconcileMovementsDtoType } from './dto/reconcile-movements.schema.js';
+import { paginationMeta, paginationSkip } from '../common/pagination.js';
+import { resolveMovementType } from './movement-type.js';
+import { MovementAutoService } from './movement-auto.service.js';
+import { MovementReconciliationService } from './movement-reconciliation.service.js';
+import { MovementEvidenceService } from './movement-evidence.service.js';
 
-const MAX_RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
-
+/**
+ * Fachada de movimentos: CRUD/consultas e delegação para os serviços
+ * especializados de auto-registro, revisão/reconciliação e evidência.
+ */
 @Injectable()
 export class MovementService {
   constructor(
     @InjectRepository(Movement)
     private readonly movementRepository: Repository<Movement>,
-    private readonly monitoring: MonitoringService,
-    private readonly dataSource: DataSource,
     private readonly vehicleService: VehicleService,
     private readonly pointService: PointService,
-    private readonly storage: StorageService,
+    private readonly autoService: MovementAutoService,
+    private readonly reconciliationService: MovementReconciliationService,
+    private readonly evidenceService: MovementEvidenceService,
   ) {}
 
   async create(createMovementDto: CreateMovementDto, actor: Actor) {
@@ -54,112 +57,12 @@ export class MovementService {
     return this.movementRepository.save(movement);
   }
 
-  async createFromCamera(
-    createMovementFromCameraDto: CreateMovementFromCameraDto,
-    actor: Actor,
-  ) {
-    requireCompanyId(actor);
-    const state = await this.monitoring.current(createMovementFromCameraDto.cameraId, actor);
-    if (!this.monitoring.fresh(state)) throw new ConflictException('Nenhuma placa confirmada recente; consulte novamente');
-    return this.createFromObservation({ ...createMovementFromCameraDto, observationId: state.observationId! }, actor);
+  createFromCamera(createMovementFromCameraDto: CreateMovementFromCameraDto, actor: Actor) {
+    return this.autoService.createFromCamera(createMovementFromCameraDto, actor);
   }
 
-  async createFromObservation(dto: CreateMovementFromObservationDto, actor: Actor) {
-    const companyId = requireCompanyId(actor);
-    return this.dataSource.transaction(async (manager) => {
-      // Serialize confirmations of this observation, including across API processes.
-      const observation = await manager.getRepository(CameraObservation).findOne({
-        where: { id: dto.observationId, companyId }, lock: { mode: 'pessimistic_write' },
-      });
-      if (!observation) throw new NotFoundException('Observação não encontrada');
-      const repository = manager.getRepository(Movement);
-      const existing = await repository.findOneBy({ observationId: observation.id, companyId });
-      if (existing) {
-        const vehicle = existing.vehicleId
-          ? await manager.getRepository(Vehicle).findOneByOrFail({ id: existing.vehicleId, companyId })
-          : null;
-        return { movement: existing, vehicle };
-      }
-      if (observation.expiresAt.getTime() <= Date.now()) throw new ConflictException('Observação expirada; consulte novamente');
-      await this.monitoring.assertCurrent(observation, actor);
-      const point = await this.pointService.findOne(observation.pointId, actor);
-      if (!point.active) throw new BadRequestException('Ponto inativo');
-      const type = this.resolveMovementType(point.type, dto.type);
-      const vehicle = await this.vehicleService.findOrCreateByPlate(observation.plate, companyId, actor, manager);
-      if (!vehicle.active) throw new BadRequestException('Veículo inativo');
-      const movement = await repository.save(repository.create({
-        observationId: observation.id,
-        pointId: observation.pointId,
-        vehicleId: vehicle.id,
-        type,
-        dateTime: dto.dateTime ? new Date(dto.dateTime) : new Date(),
-        status: 'open',
-        purpose: dto.purpose, driverName: dto.driverName, notes: dto.notes,
-        companyId, createdById: actor.userId,
-      }));
-      await this.closeUnitVisit(manager, movement, point, actor.userId);
-      return { movement, vehicle };
-    });
-  }
-
-  /**
-   * Fecha o ciclo de visita de uma unidade.
-   *
-   * Quando um movimento de saída confirmado é registrado, o movimento de entrada
-   * em aberto mais recente do mesmo veículo, na mesma empresa e mesma unidade
-   * administrativa, é finalizado (`closed`). O próprio movimento de saída também
-   * passa para `closed`, indicando que a passagem pelo ponto foi concluída.
-   */
-  private async closeUnitVisit(
-    manager: EntityManager,
-    movement: Movement,
-    point: Point,
-    actorId: string,
-  ): Promise<void> {
-    if (movement.type !== 'exit' || movement.status !== 'open' || !movement.vehicleId) {
-      return;
-    }
-
-    const repository = manager.getRepository(Movement);
-    const openEntry = await repository
-      .createQueryBuilder('m')
-      .innerJoin('points', 'point', 'point.id = m.pointId')
-      .where('m.vehicleId = :vehicleId', { vehicleId: movement.vehicleId })
-      .andWhere('m.companyId = :companyId', { companyId: movement.companyId })
-      .andWhere('m.type = :entryType', { entryType: 'entry' })
-      .andWhere('m.status = :openStatus', { openStatus: 'open' })
-      .andWhere('point.adminUnityId = :adminUnityId', { adminUnityId: point.adminUnityId })
-      .andWhere('m.dateTime <= :dateTime', { dateTime: movement.dateTime })
-      .orderBy('m.dateTime', 'DESC')
-      .getOne();
-
-    movement.status = 'closed';
-    movement.updatedById = actorId;
-
-    if (!openEntry) {
-      await repository.save(movement);
-      return;
-    }
-
-    openEntry.status = 'closed';
-    openEntry.updatedById = actorId;
-    await repository.save([openEntry, movement]);
-  }
-
-  private resolveMovementType(
-    pointType: string,
-    type?: 'entry' | 'exit',
-  ): 'entry' | 'exit' {
-    if (pointType === 'entry' || pointType === 'exit') {
-      if (type && type !== pointType) throw new BadRequestException('Tipo incompatível com o sentido do ponto');
-      return pointType;
-    }
-    if (type) {
-      return type;
-    }
-    throw new BadRequestException(
-      'O ponto vinculado à câmera aceita entrada e saída; informe o tipo (entry/exit) no payload',
-    );
+  createFromObservation(dto: CreateMovementFromObservationDto, actor: Actor) {
+    return this.autoService.createFromObservation(dto, actor);
   }
 
   async findAll(actor: Actor, filters: FindMovementsDtoType) {
@@ -242,9 +145,7 @@ export class MovementService {
     qb.orderBy(orderColumn, order === 'ASC' ? 'ASC' : 'DESC');
 
     const total = await qb.getCount();
-    const totalPages = Math.ceil(total / limit);
-    const skip = (page - 1) * limit;
-    qb.skip(skip).take(limit);
+    qb.skip(paginationSkip(page, limit)).take(limit);
 
     const rawResults = await qb.getRawAndEntities();
 
@@ -266,7 +167,7 @@ export class MovementService {
 
     return {
       data,
-      meta: { page, limit, total, totalPages },
+      meta: paginationMeta(page, limit, total),
     };
   }
 
@@ -312,222 +213,49 @@ export class MovementService {
   }
 
   /**
-   * Descarta (marca como `discarded`) uma lista de movimentos pendentes.
-   *
-   * Diferente do recálculo, o descarte é sempre individual: apenas os IDs
-   * informados são afetados, mesmo que existam outros pendentes com a mesma placa.
+   * Movimentos pendentes de revisão já enriquecidos com a chave da foto de
+   * evidência, prontos para exibição no painel do operador.
    */
-  async discard(ids: string[], actor: Actor) {
-    const companyId = requireCompanyId(actor);
-    const uniqueIds = [...new Set(ids)];
-    return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Movement);
-      const movements = await repository.find({
-        where: { id: In(uniqueIds), companyId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      const foundIds = new Set(movements.map((m) => m.id));
-      const missing = uniqueIds.filter((id) => !foundIds.has(id));
-      if (missing.length > 0) {
-        throw new NotFoundException(`Movimento(s) não encontrado(s): ${missing.join(', ')}`);
-      }
-
-      const notPending = movements.filter((m) => m.status !== 'pending_review');
-      if (notPending.length > 0) {
-        throw new ConflictException(
-          `Apenas movimentos pendentes de revisão podem ser descartados: ${notPending.map((m) => m.id).join(', ')}`,
-        );
-      }
-
-      for (const movement of movements) {
-        movement.status = 'discarded';
-        movement.updatedById = actor.userId;
-      }
-
-      return repository.save(movements);
-    });
-  }
-
-  async recalculate(id: string, dto: { plate?: string; vehicleId?: string }, actor: Actor) {
-    const companyId = requireCompanyId(actor);
-    return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Movement);
-      const movement = await repository.findOne({
-        where: { id, companyId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!movement) throw new NotFoundException('Movimento não encontrado');
-      if (movement.status !== 'pending_review') {
-        throw new ConflictException('Apenas movimentos pendentes de revisão podem ser recalculados');
-      }
-
-      let vehicle: Vehicle;
-      if (dto.vehicleId) {
-        vehicle = await this.vehicleService.findOne(dto.vehicleId, actor);
-      } else if (dto.plate) {
-        const found = await this.vehicleService.findByPlate(dto.plate, companyId);
-        if (!found) {
-          throw new NotFoundException(`Veículo com placa ${dto.plate} não encontrado na base de dados`);
+  async findPendingReviewDetailed(actor: Actor) {
+    const movements = await this.findPendingReview(actor);
+    return Promise.all(
+      movements.map(async (m) => {
+        let photoPath: string | null = null;
+        if (m.observationId) {
+          const obs = await this.evidenceService.findObservationPhotoPath(m.observationId);
+          photoPath = obs?.photoPath ?? null;
         }
-        vehicle = found;
-      } else {
-        throw new BadRequestException('Informe a placa ou o ID do veículo para recálculo');
-      }
-
-      if (!vehicle.active) throw new BadRequestException('Veículo informado está inativo');
-
-      // Confirma todos os pendentes da empresa que compartilham a mesma placa:
-      // a placa reconhecida pelo OCR no movimento alvo e a placa do veículo resolvido.
-      const targetPlates = new Set<string>();
-      if (movement.recognizedPlate) targetPlates.add(movement.recognizedPlate);
-      if (vehicle.plate) targetPlates.add(normalizePlate(vehicle.plate));
-
-      const pendingSamePlate = targetPlates.size > 0
-        ? await repository.find({
-            where: {
-              companyId,
-              status: 'pending_review',
-              recognizedPlate: In([...targetPlates]),
-            },
-            lock: { mode: 'pessimistic_write' },
-          })
-        : [];
-
-      const toConfirm = pendingSamePlate.some((m) => m.id === movement.id)
-        ? pendingSamePlate
-        : [...pendingSamePlate, movement];
-
-      const now = new Date();
-      for (const pending of toConfirm) {
-        pending.vehicleId = vehicle.id;
-        pending.status = 'open';
-        pending.recognizedPlate = null;
-        pending.recalculatedAt = now;
-        pending.updatedById = actor.userId;
-      }
-
-      await repository.save(toConfirm);
-
-      return toConfirm.find((m) => m.id === movement.id)!;
-    });
+        return {
+          id: m.id,
+          observationId: m.observationId,
+          pointId: m.pointId,
+          vehicleId: m.vehicleId,
+          recognizedPlate: m.recognizedPlate,
+          type: m.type,
+          dateTime: m.dateTime.toISOString(),
+          status: m.status,
+          companyId: m.companyId,
+          autoRegistered: m.autoRegistered,
+          photoPath,
+          createdAt: m.createdAt.toISOString(),
+        };
+      }),
+    );
   }
 
-  /**
-   * Recalcula em lote o pareamento de entradas e saídas de um período.
-   *
-   * Para cada veículo + unidade, os movimentos confirmados (`open`/`closed`) são
-   * ordenados por data e pareados: uma saída fecha a entrada mais recente ainda
-   * em aberto. Entradas que sobraram voltam para `open` e saídas sem entrada
-   * correspondente permanecem com o status atual. Movimentos `pending_review` e
-   * `discarded` não participam do pareamento.
-   */
-  async reconcile(dto: ReconcileMovementsDtoType, actor: Actor) {
-    const scope = resolveCompanyScope(actor);
-    const companyId = scope.mode === 'company' ? scope.companyId : dto.companyId;
-    if (!companyId) {
-      throw new ForbiddenException(
-        'Informe companyId (admin global) ou esteja vinculado a uma empresa para recalcular',
-      );
-    }
-
-    const dateFrom = new Date(dto.dateFrom);
-    const dateTo = new Date(dto.dateTo);
-    if (Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime()) || dateFrom > dateTo) {
-      throw new BadRequestException('Período inválido: dateFrom deve ser anterior ou igual a dateTo');
-    }
-    if (dateTo.getTime() - dateFrom.getTime() > MAX_RECONCILE_WINDOW_MS) {
-      throw new BadRequestException('Período máximo permitido para recálculo é de 31 dias');
-    }
-
-    return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Movement);
-      const { entities, raw } = await repository
-        .createQueryBuilder('m')
-        .innerJoin(Point, 'point', 'point.id = m.pointId')
-        .addSelect('point.adminUnityId', 'unitId')
-        .where('m.companyId = :companyId', { companyId })
-        .andWhere('m.dateTime >= :dateFrom', { dateFrom })
-        .andWhere('m.dateTime <= :dateTo', { dateTo })
-        .andWhere('m.vehicleId IS NOT NULL')
-        .andWhere('m.status IN (:...statuses)', { statuses: ['open', 'closed'] })
-        .orderBy('m.dateTime', 'ASC')
-        .addOrderBy('m.createdAt', 'ASC')
-        .getRawAndEntities();
-
-      const groups = new Map<string, Movement[]>();
-      entities.forEach((movement, index) => {
-        const unitId = raw[index]?.unitId as string | undefined;
-        if (!unitId || !movement.vehicleId) return;
-        const key = `${movement.vehicleId}::${unitId}`;
-        const group = groups.get(key);
-        if (group) group.push(movement);
-        else groups.set(key, [movement]);
-      });
-
-      const changes: Array<{ movement: Movement; previousStatus: string }> = [];
-      let unmatchedExits = 0;
-
-      for (const group of groups.values()) {
-        const openEntries: Movement[] = [];
-        for (const movement of group) {
-          if (movement.type === 'entry') {
-            openEntries.push(movement);
-            continue;
-          }
-          if (movement.type !== 'exit') continue;
-
-          const entry = openEntries.pop();
-          if (!entry) {
-            unmatchedExits += 1;
-            continue;
-          }
-          this.stageStatusChange(entry, 'closed', actor.userId, changes);
-          this.stageStatusChange(movement, 'closed', actor.userId, changes);
-        }
-        for (const entry of openEntries) {
-          this.stageStatusChange(entry, 'open', actor.userId, changes);
-        }
-      }
-
-      if (changes.length > 0) {
-        await repository.save(changes.map((change) => change.movement));
-      }
-
-      return {
-        range: { dateFrom: dto.dateFrom, dateTo: dto.dateTo },
-        companyId,
-        analyzed: entities.length,
-        closed: changes.filter((change) => change.movement.status === 'closed').length,
-        reopened: changes.filter((change) => change.movement.status === 'open').length,
-        unchanged: entities.length - changes.length,
-        unmatchedExits,
-        movements: changes.map((change) => ({
-          id: change.movement.id,
-          vehicleId: change.movement.vehicleId,
-          pointId: change.movement.pointId ?? null,
-          type: change.movement.type as 'entry' | 'exit',
-          dateTime: change.movement.dateTime.toISOString(),
-          previousStatus: change.previousStatus as 'open' | 'closed',
-          status: change.movement.status as 'open' | 'closed',
-        })),
-      };
-    });
+  discard(ids: string[], actor: Actor) {
+    return this.reconciliationService.discard(ids, actor);
   }
 
-  private stageStatusChange(
-    movement: Movement,
-    status: 'open' | 'closed',
-    actorId: string,
-    changes: Array<{ movement: Movement; previousStatus: string }>,
-  ): void {
-    if (movement.status === status) return;
-    changes.push({ movement, previousStatus: movement.status });
-    movement.status = status;
-    movement.updatedById = actorId;
+  recalculate(id: string, dto: { plate?: string; vehicleId?: string }, actor: Actor) {
+    return this.reconciliationService.recalculate(id, dto, actor);
   }
 
-  async createAutoRegistered(params: {
+  reconcile(dto: ReconcileMovementsDtoType, actor: Actor) {
+    return this.reconciliationService.reconcile(dto, actor);
+  }
+
+  createAutoRegistered(params: {
     observation: CameraObservation;
     vehicle: Vehicle | null;
     recognizedPlate: string;
@@ -536,75 +264,23 @@ export class MovementService {
     recognitionProvider?: string | null;
     recognitionConfidence?: number | null;
   }): Promise<Movement> {
-    const {
-      observation, vehicle, recognizedPlate, companyId, systemUserId,
-      recognitionProvider, recognitionConfidence,
-    } = params;
-
-    return this.dataSource.transaction(async (manager) => {
-      const existing = await manager.getRepository(Movement).findOneBy({ observationId: observation.id, companyId });
-      if (existing) return existing;
-
-      const point = await this.pointService.findOne(observation.pointId, { userId: systemUserId, companyId, role: 'admin' } as Actor);
-      if (!point.active) throw new BadRequestException('Ponto inativo');
-
-      const type = this.resolveMovementType(point.type, point.type === 'both' ? 'entry' as const : undefined);
-
-      const movement = manager.getRepository(Movement).create({
-        observationId: observation.id,
-        pointId: observation.pointId,
-        vehicleId: vehicle?.id ?? null,
-        type,
-        dateTime: observation.capturedAt,
-        status: vehicle ? 'open' : 'pending_review',
-        recognizedPlate,
-        autoRegistered: true,
-        recognitionProvider: recognitionProvider ?? null,
-        recognitionConfidence: recognitionConfidence ?? null,
-        companyId,
-        createdById: systemUserId,
-      });
-
-      const saved = await manager.getRepository(Movement).save(movement);
-      await this.closeUnitVisit(manager, saved, point, systemUserId);
-      return saved;
-    });
+    return this.autoService.createAutoRegistered(params);
   }
 
-  async hasRecentMovement(vehicleId: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
-    const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
-    const count = await this.movementRepository.count({
-      where: {
-        vehicleId,
-        pointId,
-        companyId,
-        dateTime: MoreThanOrEqual(cutoff),
-      },
-    });
-    return count > 0;
+  hasRecentMovement(vehicleId: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
+    return this.autoService.hasRecentMovement(vehicleId, pointId, cooldownSeconds, companyId);
   }
 
-  /** Cooldown por placa reconhecida, usado quando o veículo ainda não está cadastrado. */
-  async hasRecentMovementByPlate(recognizedPlate: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
-    const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
-    const count = await this.movementRepository.count({
-      where: {
-        recognizedPlate,
-        pointId,
-        companyId,
-        dateTime: MoreThanOrEqual(cutoff),
-      },
-    });
-    return count > 0;
+  hasRecentMovementByPlate(recognizedPlate: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
+    return this.autoService.hasRecentMovementByPlate(recognizedPlate, pointId, cooldownSeconds, companyId);
   }
 
-  async findExistingByObservation(observationId: string, companyId: string): Promise<Movement | null> {
-    return this.movementRepository.findOneBy({ observationId, companyId });
+  findExistingByObservation(observationId: string, companyId: string): Promise<Movement | null> {
+    return this.autoService.findExistingByObservation(observationId, companyId);
   }
 
-  async findObservationPhotoPath(observationId: string): Promise<{ photoPath: string | null } | null> {
-    const obs = await this.dataSource.getRepository(CameraObservation).findOneBy({ id: observationId });
-    return obs ? { photoPath: obs.photoPath } : null;
+  findObservationPhotoPath(observationId: string) {
+    return this.evidenceService.findObservationPhotoPath(observationId);
   }
 
   /**
@@ -617,21 +293,7 @@ export class MovementService {
    */
   async getEvidence(id: string, actor: Actor): Promise<{ buffer: Buffer; contentType: string }> {
     const movement = await this.findOne(id, actor);
-    if (!movement.observationId) {
-      throw new NotFoundException('Movimento não possui foto de evidência');
-    }
-    const observation = await this.dataSource
-      .getRepository(CameraObservation)
-      .findOneBy({ id: movement.observationId, companyId: movement.companyId });
-    if (!observation?.photoPath) {
-      throw new NotFoundException('Foto de evidência não disponível para este movimento');
-    }
-    try {
-      const buffer = await this.storage.getEvidence(observation.photoPath);
-      return { buffer, contentType: 'image/jpeg' };
-    } catch {
-      throw new NotFoundException('Foto de evidência não encontrada no armazenamento');
-    }
+    return this.evidenceService.loadEvidence(movement);
   }
 
   private async validateReferences(vehicleId: string | null, pointId: string | undefined, type: string, actor: Actor) {
@@ -641,7 +303,7 @@ export class MovementService {
     if (pointId) {
       const point = await this.pointService.findOne(pointId, actor);
       if (point.companyId !== vehicle.companyId || !point.active) throw new BadRequestException('Ponto inválido para o veículo');
-      this.resolveMovementType(point.type, type as 'entry' | 'exit');
+      resolveMovementType(point.type, type as 'entry' | 'exit');
     }
   }
 }

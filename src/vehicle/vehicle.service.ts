@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { CreateVehicleDto } from './dto/create-vehicle.dto.js';
-import { UpdateVehicleDto } from './dto/update-vehicle.dto.js';
+import { CreateVehicleDto } from './dto/create-vehicle.schema.js';
+import { UpdateVehicleDto } from './dto/update-vehicle.schema.js';
 import { Vehicle } from './entities/vehicle.entity.js';
+import { normalizePlate } from '../common/plate.js';
 import {
   type Actor,
   companyScopeFilter,
@@ -160,13 +161,4 @@ const RESERVE_CODE_SQL = `
 /** Código sequencial no formato TER00N (terceiro) ou VIS00N (visitante). */
 export function formatVehicleCode(prefix: string, sequence: number): string {
   return `${prefix}${String(sequence).padStart(3, '0')}`;
-}
-
-/** Canonicalize spelling only. Never guess OCR substitutions for user input. */
-export function normalizePlate(value: string): string {
-  const plate = value.trim().toUpperCase();
-  if (!/^[A-Z]{3}-?\d{4}$/.test(plate) && !/^[A-Z]{3}\d[A-Z]\d{2}$/.test(plate)) {
-    throw new BadRequestException('Placa inválida: informe ABC1234 ou ABC1D23');
-  }
-  return plate.replace('-', '');
 }

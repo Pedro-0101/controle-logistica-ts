@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MovementService } from './movement.service.js';
+import { MovementAutoService } from './movement-auto.service.js';
+import { MovementReconciliationService } from './movement-reconciliation.service.js';
+import { MovementEvidenceService } from './movement-evidence.service.js';
 import { MovementController } from './movement.controller.js';
 import { Movement } from './entities/movement.entity.js';
 import { CameraModule } from '../camera/camera.module.js';
@@ -21,7 +24,7 @@ import { StorageModule } from '../storage/storage.module.js';
     StorageModule,
   ],
   controllers: [MovementController],
-  providers: [MovementService],
+  providers: [MovementService, MovementAutoService, MovementReconciliationService, MovementEvidenceService],
   exports: [TypeOrmModule, MovementService],
 })
 export class MovementModule {}

@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateCameraDto } from './dto/create-camera.dto.js';
-import { UpdateCameraDto } from './dto/update-camera.dto.js';
+import { CreateCameraDto } from './dto/create-camera.schema.js';
+import { UpdateCameraDto } from './dto/update-camera.schema.js';
 import { Camera } from './entities/camera.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { Point } from '../point/entities/point.entity.js';

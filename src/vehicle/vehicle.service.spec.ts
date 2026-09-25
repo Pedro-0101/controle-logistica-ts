@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager, Repository } from 'typeorm';
-import { VehicleService, normalizePlate } from './vehicle.service.js';
+import { VehicleService } from './vehicle.service.js';
+import { normalizePlate } from '../common/plate.js';
 import { Vehicle } from './entities/vehicle.entity.js';
 import type { Actor } from '../auth/company-scope.js';
 

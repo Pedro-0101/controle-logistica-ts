@@ -12,16 +12,9 @@
  *
  * Se não for possível identificar uma placa válida, retorna `null`.
  */
-export type PlacaFormato = 'mercosul' | 'antiga';
+import { MERCOSUL_RE, PLACA_ANTIGA_RE, type Placa } from '../common/plate.js';
 
-export interface Placa {
-  valor: string;
-  formato: PlacaFormato;
-}
-
-/** Padrões dos dois formatos de placa vigentes no Brasil. */
-const MERCOSUL_RE = /^[A-Z]{3}\d[A-Z]\d{2}$/;
-const ANTIGA_RE = /^[A-Z]{3}\d{4}$/;
+export type { Placa, PlacaFormato } from '../common/plate.js';
 
 /**
  * Mapeia dígitos que o OCR costuma ler como letras para a letra correta.
@@ -105,7 +98,7 @@ function ajustar(texto: string, padrao: string): { valor: string; correcoes: num
   if (padrao === MERCOSUL_POS && MERCOSUL_RE.test(resultado)) {
     return { valor: resultado, correcoes };
   }
-  if (padrao === ANTIGA_POS && ANTIGA_RE.test(resultado)) {
+  if (padrao === ANTIGA_POS && PLACA_ANTIGA_RE.test(resultado)) {
     return { valor: resultado, correcoes };
   }
   return null;
@@ -126,7 +119,7 @@ function classificar(texto: string): Placa | null {
   if (MERCOSUL_RE.test(texto)) {
     return { valor: texto, formato: 'mercosul' };
   }
-  if (ANTIGA_RE.test(texto)) {
+  if (PLACA_ANTIGA_RE.test(texto)) {
     return { valor: texto, formato: 'antiga' };
   }
   const digitos = (texto.match(/\d/g) ?? []).length;

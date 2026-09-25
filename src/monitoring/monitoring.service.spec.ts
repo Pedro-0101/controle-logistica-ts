@@ -3,6 +3,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MonitoringService } from './monitoring.service.js';
+import { MonitoringContextService } from './monitoring-context.service.js';
+import { MonitoringSyncService } from './monitoring-sync.service.js';
 import { Camera } from '../camera/entities/camera.entity.js';
 import { Point } from '../point/entities/point.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
@@ -74,6 +76,8 @@ describe('MonitoringService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MonitoringService,
+        MonitoringContextService,
+        MonitoringSyncService,
         { provide: getRepositoryToken(Camera), useValue: camerasRepo },
         { provide: getRepositoryToken(Point), useValue: pointsRepo },
         { provide: getRepositoryToken(AdminUnity), useValue: unitsRepo },

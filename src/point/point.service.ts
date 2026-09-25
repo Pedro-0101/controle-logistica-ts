@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreatePointDto } from './dto/create-point.dto.js';
-import { UpdatePointDto } from './dto/update-point.dto.js';
+import { CreatePointDto } from './dto/create-point.schema.js';
+import { UpdatePointDto } from './dto/update-point.schema.js';
 import { Point } from './entities/point.entity.js';
 import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import {

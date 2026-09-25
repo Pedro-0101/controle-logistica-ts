@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { AutoRegistrationService } from './auto-registration.service.js';
+import { RecognitionResolverService } from './recognition-resolver.service.js';
+import { AutoRegistrationEvidenceService } from './auto-registration-evidence.service.js';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { ExternalInteractionService } from '../anpr/external-interaction.service.js';
@@ -129,6 +131,8 @@ describe('AutoRegistrationService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AutoRegistrationService,
+        RecognitionResolverService,
+        AutoRegistrationEvidenceService,
         { provide: MonitoringService, useValue: monitoring },
         { provide: AnprService, useValue: anpr },
         { provide: PlateRecognitionProviderFactory, useValue: providers },

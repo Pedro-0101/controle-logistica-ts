@@ -9,10 +9,13 @@ import { CompanyConfigModule } from '../company-config/company-config.module.js'
 import { CameraObservation } from './observation.entity.js';
 import { MonitoringController } from './monitoring.controller.js';
 import { MonitoringService } from './monitoring.service.js';
+import { MonitoringContextService } from './monitoring-context.service.js';
+import { MonitoringSyncService } from './monitoring-sync.service.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Camera, Point, AdminUnity, CameraObservation]), CameraModule, AnprModule, CompanyConfigModule],
-  controllers: [MonitoringController], providers: [MonitoringService],
+  controllers: [MonitoringController],
+  providers: [MonitoringService, MonitoringContextService, MonitoringSyncService],
   exports: [MonitoringService, TypeOrmModule],
 })
 export class MonitoringModule {}

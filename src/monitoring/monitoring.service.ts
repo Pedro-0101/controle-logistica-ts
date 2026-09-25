@@ -1,153 +1,44 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Camera } from '../camera/entities/camera.entity.js';
-import { Point } from '../point/entities/point.entity.js';
-import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { MediaMTXService } from '../camera/mediamtx.service.js';
 import { SnapshotService } from '../camera/snapshot.service.js';
-import { CompanyConfigService } from '../company-config/company-config.service.js';
 import { type Actor, resolveCompanyScope, withCompanyScopeWhere } from '../auth/company-scope.js';
 import { CameraObservation } from './observation.entity.js';
 import type { CurrentObservation } from './observation.schema.js';
+import { MonitoringContextService } from './monitoring-context.service.js';
+import { MonitoringSyncService } from './monitoring-sync.service.js';
 
 @Injectable()
 export class MonitoringService implements OnApplicationBootstrap, OnModuleDestroy {
-  private readonly logger = new Logger(MonitoringService.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<void>;
-  private stopped = false;
-  private readonly registered = new Set<string>();
-
   constructor(
     @InjectRepository(Camera) private readonly cameras: Repository<Camera>,
-    @InjectRepository(Point) private readonly points: Repository<Point>,
-    @InjectRepository(AdminUnity) private readonly units: Repository<AdminUnity>,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
     private readonly anpr: AnprService,
     private readonly mediamtx: MediaMTXService,
     private readonly snapshotService: SnapshotService,
-    private readonly companyConfigService: CompanyConfigService,
-    private readonly config: ConfigService,
+    private readonly context: MonitoringContextService,
+    private readonly syncService: MonitoringSyncService,
   ) {}
 
   onApplicationBootstrap() {
-    if (this.config.get<string>('MONITORING_ENABLED') === 'false') return;
-    void this.syncMediaMTX();
-    void this.reconcile();
-    this.timer = setInterval(() => { void this.reconcile(); }, 5000);
-    this.timer.unref();
+    this.syncService.bootstrap();
   }
 
   reconcile(): Promise<void> {
-    if (this.stopped) return Promise.resolve();
-    if (this.running) return this.running;
-    this.running = this.sync().catch(() => {
-      this.logger.warn('Não foi possível sincronizar o monitoramento; nova tentativa em 5 segundos');
-    }).finally(() => { this.running = undefined; });
-    return this.running;
-  }
-
-  private async sync() {
-    const cameras = await this.cameras.find();
-    const desired = new Set<string>();
-    for (const camera of cameras) {
-      if (this.stopped) return;
-      if (await this.validContext(camera)) {
-        desired.add(camera.id);
-        try {
-          let companyConfig: import('../company-config/entities/company-config.entity.js').CompanyConfig | null = null;
-          try {
-            companyConfig = await this.companyConfigService.findOne(camera.companyId, {
-              userId: '', companyId: camera.companyId, role: 'admin',
-            } as any);
-          } catch { /* empresa sem config — usa defaults */ }
-          const point = await this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId });
-          const intervalMs = companyConfig?.cameraSnapshotIntervalMs ?? 1000;
-          const staleSec = point?.inheritCompanyConfig
-            ? (companyConfig?.anprStaleAfterSeconds ?? 5)
-            : (point?.anprStaleAfterSeconds ?? companyConfig?.anprStaleAfterSeconds ?? 5);
-          const confirmReads = point?.inheritCompanyConfig
-            ? (companyConfig?.anprConfirmationReads ?? 2)
-            : (point?.anprConfirmationReads ?? companyConfig?.anprConfirmationReads ?? 2);
-          await this.anpr.upsertMonitor(camera, {
-            intervalSeconds: Math.max(1, Math.round(intervalMs / 1000)),
-            staleAfterSeconds: staleSec,
-            confirmationReads: confirmReads,
-          });
-          this.registered.add(camera.id);
-        } catch (error: any) { this.logger.warn(`Monitor indisponível para câmera ${camera.id}: ${error?.message ?? error}`); }
-      }
-    }
-    // Single Nest owner per Python instance; also removes leftovers after a Nest restart.
-    const remote = await this.anpr.listMonitors();
-    for (const id of new Set([...remote, ...this.registered])) {
-      if (this.stopped) return;
-      if (!desired.has(id)) {
-        await this.anpr.deleteMonitor(id);
-        this.registered.delete(id);
-      }
-    }
+    return this.syncService.reconcile();
   }
 
   async onModuleDestroy() {
-    this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
-    await this.running;
-  }
-
-  private async syncMediaMTX() {
-    try {
-      const cameras = await this.cameras.find();
-      const existingPaths = await this.mediamtx.listPaths();
-
-      // Add paths for cameras that don't have them
-      for (const camera of cameras) {
-        if (this.stopped) return;
-        const pathName = `camera-${camera.id}`;
-        if (!existingPaths.includes(pathName)) {
-          try {
-            await this.mediamtx.addPath(camera);
-            this.logger.log(`Path ${pathName} adicionado ao MediaMTX na inicialização`);
-          } catch (error) {
-            this.logger.warn(`Falha ao adicionar path ${pathName} na inicialização: ${error}`);
-          }
-        }
-      }
-
-      // Remove orphan paths (paths that don't correspond to any camera)
-      const cameraIds = new Set(cameras.map(c => `camera-${c.id}`));
-      for (const pathName of existingPaths) {
-        if (this.stopped) return;
-        if (pathName.startsWith('camera-') && !cameraIds.has(pathName)) {
-          const cameraId = pathName.replace('camera-', '');
-          try {
-            await this.mediamtx.removePath(cameraId);
-            this.logger.log(`Path órfão ${pathName} removido do MediaMTX na inicialização`);
-          } catch (error) {
-            this.logger.warn(`Falha ao remover path órfão ${pathName}: ${error}`);
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.warn(`Falha ao sincronizar câmeras com MediaMTX: ${error}`);
-    }
-  }
-
-  private async validContext(camera: Camera): Promise<boolean> {
-    const [point, unit] = await Promise.all([
-      this.points.findOneBy({ id: camera.pointId, companyId: camera.companyId, active: true }),
-      this.units.findOneBy({ id: camera.adminUnityId, companyId: camera.companyId, active: true }),
-    ]);
-    return !!point && !!unit && point.adminUnityId === unit.id;
+    await this.syncService.destroy();
   }
 
   async cameraInScope(id: string, actor: Actor): Promise<Camera> {
     const camera = await this.cameras.findOneBy(withCompanyScopeWhere<Camera>({ id }, resolveCompanyScope(actor)));
     if (!camera) throw new NotFoundException('Câmera não encontrada');
-    if (!await this.validContext(camera)) throw new BadRequestException('Ponto ou unidade inválido/inativo para a câmera');
+    if (!await this.context.validContext(camera)) throw new BadRequestException('Ponto ou unidade inválido/inativo para a câmera');
     return camera;
   }
 

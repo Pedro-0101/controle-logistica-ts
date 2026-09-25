@@ -8,6 +8,9 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { MovementService } from './movement.service.js';
+import { MovementAutoService } from './movement-auto.service.js';
+import { MovementReconciliationService } from './movement-reconciliation.service.js';
+import { MovementEvidenceService } from './movement-evidence.service.js';
 import { Movement } from './entities/movement.entity.js';
 import { AnprService } from '../anpr/anpr.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
@@ -101,6 +104,9 @@ describe('MovementService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MovementService,
+        MovementAutoService,
+        MovementReconciliationService,
+        MovementEvidenceService,
         {
           provide: getRepositoryToken(Movement),
           useValue: repository,
