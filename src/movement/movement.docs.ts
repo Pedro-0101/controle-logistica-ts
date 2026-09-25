@@ -74,8 +74,11 @@ export const MOVEMENT_DOCS = {
     'para não ser capturada pelo parâmetro dinâmico.',
   evidence:
     'Retorna a foto de evidência (JPEG) de um movimento a partir do seu ID.\n\n' +
-    '**Quando usar:** movimentos automáticos (`pending_review` ou `open`) cuja placa foi lida por ANPR. ' +
+    '**Quando usar:** movimentos automáticos com placa não reconhecida aguardando revisão (`pending_review`). ' +
     'A imagem só existe quando `anprSaveUnrecognizedPhotos=true` na config da empresa/ponto e a placa não foi encontrada no cadastro de veículos.\n\n' +
+    '**Ciclo de vida:** a foto é mantida apenas enquanto a ocorrência aguarda revisão. Ao confirmar ' +
+    '(`POST /movement/:id/recalculate`) ou descartar (`POST /movement/discard`), o objeto é removido do ' +
+    'storage e o `photoPath` da observação é limpo; chamadas posteriores retornam `404`.\n\n' +
     '**Resolução:** o backend localiza a observação vinculada ao movimento e busca o arquivo no storage ' +
     '(MinIO ou disco local).\n\n' +
     '**Uso no frontend:** como a rota exige o token JWT no header `Authorization`, faça o download via `fetch` ' +

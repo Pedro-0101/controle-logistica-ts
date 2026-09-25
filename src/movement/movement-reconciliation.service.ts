@@ -14,6 +14,7 @@ import { VehicleService } from '../vehicle/vehicle.service.js';
 import { normalizePlate } from '../common/plate.js';
 import { Point } from '../point/entities/point.entity.js';
 import type { ReconcileMovementsDtoType } from './dto/reconcile-movements.schema.js';
+import { MovementEvidenceService } from './movement-evidence.service.js';
 
 const MAX_RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 
@@ -28,6 +29,7 @@ export class MovementReconciliationService {
     private readonly movementRepository: Repository<Movement>,
     private readonly dataSource: DataSource,
     private readonly vehicleService: VehicleService,
+    private readonly evidenceService: MovementEvidenceService,
   ) {}
 
   /**
@@ -39,7 +41,7 @@ export class MovementReconciliationService {
   async discard(ids: string[], actor: Actor) {
     const companyId = requireCompanyId(actor);
     const uniqueIds = [...new Set(ids)];
-    return this.dataSource.transaction(async (manager) => {
+    const discarded = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(Movement);
       const movements = await repository.find({
         where: { id: In(uniqueIds), companyId },
@@ -66,11 +68,17 @@ export class MovementReconciliationService {
 
       return repository.save(movements);
     });
+
+    // A foto só é necessária enquanto a leitura aguardava revisão.
+    await this.evidenceService.removeEvidenceForObservations(
+      discarded.map((movement) => movement.observationId),
+    );
+    return discarded;
   }
 
   async recalculate(id: string, dto: { plate?: string; vehicleId?: string }, actor: Actor) {
     const companyId = requireCompanyId(actor);
-    return this.dataSource.transaction(async (manager) => {
+    const confirmed = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(Movement);
       const movement = await repository.findOne({
         where: { id, companyId },
@@ -128,8 +136,15 @@ export class MovementReconciliationService {
 
       await repository.save(toConfirm);
 
-      return toConfirm.find((m) => m.id === movement.id)!;
+      return {
+        movement: toConfirm.find((m) => m.id === movement.id)!,
+        observationIds: toConfirm.map((m) => m.observationId),
+      };
     });
+
+    // Ocorrências confirmadas não precisam mais da foto de evidência.
+    await this.evidenceService.removeEvidenceForObservations(confirmed.observationIds);
+    return confirmed.movement;
   }
 
   /**

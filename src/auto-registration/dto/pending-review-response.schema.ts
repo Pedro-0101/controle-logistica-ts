@@ -57,7 +57,7 @@ export const pendingReviewMovementSchema = z.object({
   photoPath: z.string().nullable().meta({
     description:
       'Chave da foto de evidência no storage (MinIO/S3 ou disco local). Disponível quando anprSaveUnrecognizedPhotos=true na config da empresa. Pode ser null se a foto não pôde ser salva.\n\n' +
-      'Para exibir a imagem, prefira buscar pelo ID do movimento: `GET /movement/:id/evidence` (retorna o JPEG com o mesmo escopo de empresa).',
+      'Para exibir a imagem, prefira buscar pelo ID do movimento: `GET /movement/:id/evidence` (retorna o JPEG com o mesmo escopo de empresa). A foto é removida do storage quando a ocorrência é confirmada ou descartada.',
     examples: ['evidence/a1b2c3d4/2026-08-29/d3f2a1b0.jpg'],
   }),
   createdAt: z.string().datetime({ offset: true }).meta({

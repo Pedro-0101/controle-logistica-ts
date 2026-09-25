@@ -52,10 +52,12 @@ describe('MovementService', () => {
     fresh: vi.fn(),
     assertCurrent: vi.fn(),
   };
-  const storageService = { getEvidence: vi.fn() };
+  const storageService = { getEvidence: vi.fn(), removeEvidence: vi.fn() };
   const observationRepo = {
     findOne: vi.fn(),
     findOneBy: vi.fn(),
+    find: vi.fn().mockResolvedValue([]),
+    save: vi.fn((data: unknown) => data),
   };
   const movementRepoInTx = {
     findOneBy: vi.fn(),
@@ -288,6 +290,7 @@ describe('MovementService', () => {
       status: 'pending_review',
       recognizedPlate: 'ABC1D23',
       vehicleId: null,
+      observationId: 'obs-1',
       type: 'entry',
     };
 
@@ -335,6 +338,22 @@ describe('MovementService', () => {
       );
     });
 
+    it('remove a foto de evidência das ocorrências confirmadas', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pendingMovement }]);
+      observationRepo.find.mockResolvedValue([
+        { id: 'obs-1', photoPath: 'evidence/company-1/2026-01-01/obs-1.jpg' },
+      ]);
+
+      await service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor);
+
+      expect(storageService.removeEvidence).toHaveBeenCalledWith(
+        'evidence/company-1/2026-01-01/obs-1.jpg',
+      );
+      expect(observationRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({ id: 'obs-1', photoPath: null }),
+      ]);
+    });
+
     it('lança 404 quando o veículo da placa não existe', async () => {
       vehicleService.findByPlate.mockResolvedValue(null);
 
@@ -358,6 +377,7 @@ describe('MovementService', () => {
       companyId: 'company-1',
       status: 'pending_review',
       recognizedPlate: 'ABC1D23',
+      observationId: 'obs-1',
     };
 
     it('descarta apenas os movimentos informados', async () => {
@@ -386,6 +406,23 @@ describe('MovementService', () => {
       const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
       expect(saved).toHaveLength(1);
       expect(saved[0].id).toBe('mov-1');
+    });
+
+    it('remove a foto de evidência das ocorrências descartadas', async () => {
+      movementRepoInTx.find.mockResolvedValue([{ ...pending }]);
+      movementRepoInTx.save.mockImplementation((data: Partial<Movement>) => data);
+      observationRepo.find.mockResolvedValue([
+        { id: 'obs-1', photoPath: 'evidence/company-1/2026-01-01/obs-1.jpg' },
+      ]);
+
+      await service.discard(['mov-1'], companyActor);
+
+      expect(storageService.removeEvidence).toHaveBeenCalledWith(
+        'evidence/company-1/2026-01-01/obs-1.jpg',
+      );
+      expect(observationRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({ id: 'obs-1', photoPath: null }),
+      ]);
     });
 
     it('lança 404 quando algum movimento não existe', async () => {

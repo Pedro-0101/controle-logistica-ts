@@ -32,6 +32,7 @@ import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
  *
  * A foto de evidência é obtida por `GET /movement/:id/evidence` (retorna o JPEG).
  * Use o `id` do movimento — não monte a URL a partir de `photoPath` (chave interna do storage).
+ * A foto é removida do storage assim que o movimento é confirmado (recalculate) ou descartado.
  *
  * #### 4. Correção / Cadastro (front)
  * Duas opções para o usuário:
