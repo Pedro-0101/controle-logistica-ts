@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "db:init": "npm run build && node --env-file-if-exists=.env scripts/init-db.mjs",
+    "evidence:purge": "node --env-file-if-exists=.env scripts/purge-confirmed-evidence.mjs",
     "seed:cameras": "node --env-file-if-exists=.env scripts/seed-cameras.mjs",
     "test:python": "node scripts/python.mjs -m pytest --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=95"
   },
