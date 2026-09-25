@@ -111,6 +111,18 @@ export const companyConfigResponseSchema = z
       description: 'Exigir motivo na movimentação',
       examples: [false],
     }),
+    journeyWindowStart: z.string().meta({
+      description: 'Início da janela de jornada (HH:MM)',
+      examples: ['06:00'],
+    }),
+    journeyWindowEnd: z.string().meta({
+      description: 'Fim da janela de jornada (HH:MM)',
+      examples: ['22:00'],
+    }),
+    journeyWindowDays: z.string().meta({
+      description: 'Dias da semana da jornada em CSV (1=segunda ... 7=domingo)',
+      examples: ['1,2,3,4,5'],
+    }),
     createdById: z.string().meta({
       description: 'ID do usuário que criou o registro',
       examples: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],

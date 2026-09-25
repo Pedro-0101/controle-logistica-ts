@@ -264,7 +264,14 @@ retornados são remapeados para as coordenadas da imagem original.
 | POST | `/anpr/reconhecer-imagem` | Reconhecer placa em imagem base64 |
 | GET | `/anpr/external-interactions` | Auditar chamadas às APIs externas (latência/custo) |
 | GET | `/anpr/external-interactions/usage` | Uso global por empresa (somente admin raiz `companyId = null`) |
-| GET/PATCH | `/company-config/:companyId` | Configurações da empresa (inclui modo de reconhecimento) |
+| GET/PATCH | `/company-config/:companyId` | Configurações da empresa (inclui modo de reconhecimento e jornada) |
+| GET | `/reports/movement-book` | Livro de movimentação com tempos calculados (aceita `format=csv`) |
+| GET | `/reports/vehicle-timeline` | Linha do tempo de permanência/trânsito por veículo |
+| GET | `/reports/fleet-status` | Posição atual da frota (dentro de unidade ou em trânsito) |
+| GET | `/reports/dwell` | Permanência agregada por veículo/unidade |
+| GET | `/reports/transit` | Trânsito agregado por rota (origem → destino) |
+| GET | `/reports/utilization` | Distribuição do tempo (permanência/trânsito/sem registro) |
+| GET | `/reports/exceptions` | Anomalias de tempo (sem saída, sem chegada, acima do p95, pernoite) |
 
 Todas as entidades (`company`, `admin-unity`, `point`, `vehicle`, `camera`, `movement`)
 possuem CRUD completo (GET, GET/:id, POST, PATCH/:id, DELETE/:id).
@@ -283,6 +290,33 @@ fecha a entrada mais recente ainda em aberto do mesmo veículo na mesma unidade.
 movimento for descartado ou ajustado depois, use `POST /movement/reconcile` para
 reprocessar o pareamento do período — entradas que ficaram sem saída voltam para
 `open`, e saídas sem entrada correspondente não têm o status alterado.
+
+## Relatórios de tempo (frota própria)
+
+Conjunto de relatórios gerenciais baseados no **livro de movimentação**. Foco em
+**tempo de permanência** (entrada→saída na mesma unidade) e **tempo de ausência/
+trânsito** (saída de uma unidade → entrada na seguinte).
+
+- Consideram apenas veículos do tipo `own` (frota própria) e movimentos confirmados
+  (`open`/`closed`).
+- A **janela de jornada** (configurável em `company-config`) define o que é um
+  intervalo "normal": permanências/trânsitos que cruzam fora da janela (ex.: virada
+  de noite, fim de semana) são marcados como atípicos e excluídos das estatísticas.
+- O **baseline de trânsito** de cada rota é a média histórica dos próprios
+  movimentos (janela de 90 dias, p95, nº de amostras), usado para sinalizar desvios.
+
+Todos os endpoints aceitam `dateFrom`, `dateTo`, `vehicleId`, `adminUnityId` e
+`pointId` (padrão: últimos 7 dias). O `movement-book` aceita `format=csv`.
+
+| Relatório | O que traz |
+|---|---|
+| `vehicle-timeline` | Segmentos cronológicos de permanência e trânsito por veículo, com baseline e anomalias |
+| `movement-book` | Cada movimento com o tempo calculado (permanência na entrada, trânsito na saída) e export CSV |
+| `fleet-status` | Onde cada veículo está agora: na unidade X (com permanência corrente) ou em trânsito desde a última saída |
+| `dwell` | Permanência por veículo e por unidade (média, mediana, p95, mín, máx) |
+| `transit` | Trânsito por rota (origem → destino) com nº de viagens e baseline |
+| `utilization` | % do tempo de cada veículo em permanência, trânsito e sem registro |
+| `exceptions` | Permanência aberta acima de 8h, entrada sem saída, saída sem chegada, trânsito acima do p95 e pernoite |
 
 ## Códigos de erro
 

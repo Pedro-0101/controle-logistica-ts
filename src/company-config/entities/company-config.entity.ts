@@ -255,6 +255,33 @@ export class CompanyConfig {
   @Column({ default: false })
   requirePurpose: boolean;
 
+  // ── Jornada (relatórios de tempo) ──
+
+  @ApiProperty({
+    description: 'Início da janela de jornada (HH:MM) usada nos relatórios de permanência/ausência',
+    example: '06:00',
+    default: '00:00',
+  })
+  @Column({ default: '00:00' })
+  journeyWindowStart: string;
+
+  @ApiProperty({
+    description: 'Fim da janela de jornada (HH:MM) usada nos relatórios de permanência/ausência',
+    example: '22:00',
+    default: '23:59',
+  })
+  @Column({ default: '23:59' })
+  journeyWindowEnd: string;
+
+  @ApiProperty({
+    description:
+      'Dias da semana da jornada, em CSV com numeração ISO (1=segunda ... 7=domingo). Ex.: "1,2,3,4,5"',
+    example: '1,2,3,4,5,6,7',
+    default: '1,2,3,4,5,6,7',
+  })
+  @Column({ default: '1,2,3,4,5,6,7' })
+  journeyWindowDays: string;
+
   // ── Audit ──
 
   @ApiProperty({

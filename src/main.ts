@@ -47,6 +47,12 @@ async function bootstrap() {
     .addTag('Auto Registration', 'Revisão de movimentações registradas automaticamente por ANPR. Quando uma placa não é encontrada na base de dados, o sistema cria um movimento pendente de revisão. O operador corrige a placa ou cadastra o veículo e aciona o recálculo.')
     .addTag('Monitoring', 'Monitoramento em tempo real de câmeras IP: leitura contínua de placas (polling), captura de snapshots sob demanda, e streaming ao vivo (HLS/WebRTC/RTSP) via MediaMTX.')
     .addTag('Stats', 'Estatísticas de monitoramento ANPR: monitores ativos, observações confirmadas e dados de leitura de placas')
+    .addTag(
+      'Reports',
+      'Relatórios gerenciais de tempo (frota própria): livro de movimentação, linha do tempo por veículo, ' +
+        'permanência, trânsito entre unidades, posição atual da frota, utilização e exceções. ' +
+        'A janela de jornada é configurada em `company-config` (journeyWindowStart/End/Days).',
+    )
     .addBearerAuth()
     .build();
 

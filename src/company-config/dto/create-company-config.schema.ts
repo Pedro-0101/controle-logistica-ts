@@ -128,6 +128,34 @@ export const createCompanyConfigSchema = z
       examples: [false],
       default: false,
     }),
+    journeyWindowStart: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use o formato HH:MM')
+      .default('00:00')
+      .meta({
+        description:
+          'Início da janela de jornada (HH:MM). Trânsito/permanência que cruza fora da janela é marcado como atípico e fica fora das estatísticas de tempo.',
+        examples: ['06:00'],
+        default: '00:00',
+      }),
+    journeyWindowEnd: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use o formato HH:MM')
+      .default('23:59')
+      .meta({
+        description: 'Fim da janela de jornada (HH:MM).',
+        examples: ['22:00'],
+        default: '23:59',
+      }),
+    journeyWindowDays: z
+      .string()
+      .regex(/^[1-7](,[1-7])*$/, 'Use CSV de 1 a 7 (ISO: 1=segunda ... 7=domingo)')
+      .default('1,2,3,4,5,6,7')
+      .meta({
+        description: 'Dias da semana da jornada em CSV (1=segunda ... 7=domingo).',
+        examples: ['1,2,3,4,5'],
+        default: '1,2,3,4,5,6,7',
+      }),
   })
   .meta({ id: 'CreateCompanyConfigDto' });
 
