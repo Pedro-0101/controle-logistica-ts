@@ -292,6 +292,7 @@ describe('MovementService', () => {
       vehicleId: null,
       observationId: 'obs-1',
       type: 'entry',
+      dateTime: new Date('2026-01-01T10:00:00.000Z'),
     };
 
     beforeEach(() => {
@@ -302,11 +303,16 @@ describe('MovementService', () => {
       });
     });
 
-    it('confirma o movimento alvo e todos os pendentes com a mesma placa', async () => {
-      const other = { ...pendingMovement, id: 'mov-2' };
+    it('confirma apenas o movimento revisado e descarta duplicatas da mesma passagem', async () => {
+      const duplicate = {
+        ...pendingMovement,
+        id: 'mov-2',
+        observationId: 'obs-2',
+        dateTime: new Date('2026-01-01T10:02:00.000Z'),
+      };
       movementRepoInTx.find.mockResolvedValue([
         { ...pendingMovement },
-        { ...other },
+        { ...duplicate },
       ]);
 
       const result = await service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor);
@@ -322,8 +328,34 @@ describe('MovementService', () => {
       );
       const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
       expect(saved).toHaveLength(2);
-      expect(saved.every((m) => m.status === 'open' && m.vehicleId === 'vehicle-1')).toBe(true);
+      expect(saved.find((m) => m.id === 'mov-1')).toMatchObject({
+        status: 'open',
+        vehicleId: 'vehicle-1',
+      });
+      expect(saved.find((m) => m.id === 'mov-2')).toMatchObject({
+        status: 'discarded',
+        updatedById: 'user-id',
+      });
       expect(result).toMatchObject({ id: 'mov-1', status: 'open', vehicleId: 'vehicle-1' });
+    });
+
+    it('não confirma nem descarta pendentes da mesma placa fora da janela de 5 minutos', async () => {
+      const separatePassage = {
+        ...pendingMovement,
+        id: 'mov-2',
+        observationId: 'obs-2',
+        dateTime: new Date('2026-01-01T10:05:00.000Z'),
+      };
+      movementRepoInTx.find.mockResolvedValue([
+        { ...pendingMovement },
+        { ...separatePassage },
+      ]);
+
+      await service.recalculate('mov-1', { plate: 'ABC1D23' }, companyActor);
+
+      const saved = movementRepoInTx.save.mock.calls[0][0] as Movement[];
+      expect(saved).toHaveLength(1);
+      expect(saved[0]).toMatchObject({ id: 'mov-1', status: 'open' });
     });
 
     it('inclui a placa do veículo resolvido na busca por pendentes', async () => {

@@ -19,6 +19,12 @@ import { MovementEvidenceService } from './movement-evidence.service.js';
 const MAX_RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 
 /**
+ * Janela em que leituras da mesma placa são consideradas a mesma passagem.
+ * Leituras repetidas dentro desse intervalo não geram novas ocorrências.
+ */
+const SAME_PASSAGE_WINDOW_MS = 5 * 60 * 1000;
+
+/**
  * Operações de revisão de movimentos: descarte, recálculo individual (após
  * correção de placa) e reconciliação em lote do pareamento entrada/saída.
  */
@@ -104,8 +110,8 @@ export class MovementReconciliationService {
 
       if (!vehicle.active) throw new BadRequestException('Veículo informado está inativo');
 
-      // Confirma todos os pendentes da empresa que compartilham a mesma placa:
-      // a placa reconhecida pelo OCR no movimento alvo e a placa do veículo resolvido.
+      // Pendentes da empresa que compartilham a placa reconhecida pelo OCR no
+      // movimento alvo e/ou a placa do veículo resolvido.
       const targetPlates = new Set<string>();
       if (movement.recognizedPlate) targetPlates.add(movement.recognizedPlate);
       if (vehicle.plate) targetPlates.add(normalizePlate(vehicle.plate));
@@ -121,24 +127,32 @@ export class MovementReconciliationService {
           })
         : [];
 
-      const toConfirm = pendingSamePlate.some((m) => m.id === movement.id)
-        ? pendingSamePlate
-        : [...pendingSamePlate, movement];
+      // Apenas a ocorrência revisada é confirmada. Leituras da mesma placa
+      // dentro da janela de 5 minutos são a mesma passagem e viram descarte,
+      // evitando registrar ocorrências duplicadas. Leituras mais distantes são
+      // ocorrências distintas e continuam pendentes para revisão.
+      const duplicates = pendingSamePlate.filter(
+        (pending) => pending.id !== movement.id && this.isSamePassage(pending, movement),
+      );
 
       const now = new Date();
-      for (const pending of toConfirm) {
-        pending.vehicleId = vehicle.id;
-        pending.status = 'open';
-        pending.recognizedPlate = null;
-        pending.recalculatedAt = now;
-        pending.updatedById = actor.userId;
+      movement.vehicleId = vehicle.id;
+      movement.status = 'open';
+      movement.recognizedPlate = null;
+      movement.recalculatedAt = now;
+      movement.updatedById = actor.userId;
+
+      for (const duplicate of duplicates) {
+        duplicate.status = 'discarded';
+        duplicate.recalculatedAt = now;
+        duplicate.updatedById = actor.userId;
       }
 
-      await repository.save(toConfirm);
+      await repository.save([movement, ...duplicates]);
 
       return {
-        movement: toConfirm.find((m) => m.id === movement.id)!,
-        observationIds: toConfirm.map((m) => m.observationId),
+        movement,
+        observationIds: [movement, ...duplicates].map((m) => m.observationId),
       };
     });
 
@@ -247,6 +261,12 @@ export class MovementReconciliationService {
         })),
       };
     });
+  }
+
+  private isSamePassage(a: Movement, b: Movement): boolean {
+    if (!a.dateTime || !b.dateTime) return false;
+    if (a.pointId !== b.pointId) return false;
+    return Math.abs(a.dateTime.getTime() - b.dateTime.getTime()) < SAME_PASSAGE_WINDOW_MS;
   }
 
   private stageStatusChange(
