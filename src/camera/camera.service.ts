@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnApplicationBootstrap,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateCameraDto } from './dto/create-camera.schema.js';
@@ -15,9 +22,12 @@ import {
   withCompanyScopeWhere,
 } from '../auth/company-scope.js';
 
+const MEDIAMTX_RECONCILE_INTERVAL_MS = 30_000;
+
 @Injectable()
-export class CameraService {
+export class CameraService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(CameraService.name);
+  private reconcileTimer?: NodeJS.Timeout;
 
   constructor(
     @InjectRepository(Camera)
@@ -28,6 +38,21 @@ export class CameraService {
     private readonly pointRepository: Repository<Point>,
     private readonly mediamtx: MediaMTXService,
   ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    await this.safeSyncWithMediaMTX();
+    this.reconcileTimer = setInterval(() => {
+      void this.safeSyncWithMediaMTX();
+    }, MEDIAMTX_RECONCILE_INTERVAL_MS);
+    this.reconcileTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = undefined;
+    }
+  }
 
   async create(createCameraDto: CreateCameraDto, actor: Actor) {
     const companyId = requireCompanyId(actor);
@@ -52,18 +77,21 @@ export class CameraService {
     };
   }
 
-  findAll(actor: Actor) {
+  async findAll(actor: Actor) {
     const scope = resolveCompanyScope(actor);
-    return this.cameraRepository.find({
+    const cameras = await this.cameraRepository.find({
       where: companyScopeFilter<Camera>(scope),
-    }).then(cameras => cameras.map(camera => ({
+    });
+    await this.ensurePaths(cameras);
+    return cameras.map(camera => ({
       ...camera,
       streamUrls: this.mediamtx.getStreamUrls(camera.id),
-    })));
+    }));
   }
 
   async findOne(id: string, actor: Actor) {
     const camera = await this.findOneRaw(id, actor);
+    await this.ensurePaths([camera]);
     return {
       ...camera,
       streamUrls: this.mediamtx.getStreamUrls(camera.id),
@@ -136,6 +164,29 @@ export class CameraService {
           this.logger.warn(`Falha ao remover path órfão ${pathName}: ${error}`);
         }
       }
+    }
+  }
+
+  private async safeSyncWithMediaMTX(): Promise<void> {
+    try {
+      await this.syncAllWithMediaMTX();
+    } catch (error) {
+      this.logger.warn(`Falha ao sincronizar câmeras com MediaMTX: ${error}`);
+    }
+  }
+
+  private async ensurePaths(cameras: Camera[]): Promise<void> {
+    if (cameras.length === 0) return;
+
+    try {
+      const existingPaths = new Set(await this.mediamtx.listPaths());
+      for (const camera of cameras) {
+        if (!existingPaths.has(`camera-${camera.id}`)) {
+          await this.mediamtx.addPath(camera);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Falha ao garantir paths no MediaMTX: ${error}`);
     }
   }
 
