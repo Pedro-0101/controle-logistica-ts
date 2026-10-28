@@ -447,6 +447,15 @@ describe('AutoRegistrationService', () => {
     expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
   });
 
+  it('não cria movimento quando o ponto desativa o auto-registro herdando o restante', async () => {
+    point.inheritCompanyConfig = true;
+    point.anprAutoRegister = false;
+
+    await service.reconcile();
+
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+  });
+
   it('respeita o cooldown do veículo no ponto', async () => {
     companyConfig.anprAutoRegisterCooldownSeconds = 30;
     movementService.hasRecentMovement.mockResolvedValue(true);

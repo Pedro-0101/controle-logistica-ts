@@ -5,6 +5,10 @@
  * Caso contrário, cada campo usa o valor do ponto e, quando nulo, cai de volta
  * para o valor da empresa. Fonte única de verdade usada pelo auto-registro e
  * pelo monitoramento.
+ *
+ * Exceção: `anprAutoRegister: false` no ponto é uma desativação explícita e
+ * prevalece sobre a herança. O formulário permite desmarcar o registro
+ * automático sem desligar a herança dos demais parâmetros do ponto.
  */
 export interface ResolvedAnprConfig {
   anprAutoRegister: boolean;
@@ -47,8 +51,12 @@ export function resolveAnprConfig(
   point: object | null | undefined,
 ): ResolvedAnprConfig {
   const source = <T>(field: string): T | undefined => resolveInherited<T>(companyConfig, point, field);
+  const pointRecord = point as Record<string, unknown> | null | undefined;
+  const autoRegisterExplicitlyDisabled = pointRecord?.anprAutoRegister === false;
   return {
-    anprAutoRegister: source<boolean>('anprAutoRegister') ?? true,
+    anprAutoRegister: autoRegisterExplicitlyDisabled
+      ? false
+      : source<boolean>('anprAutoRegister') ?? true,
     anprSaveUnrecognizedPhotos: source<boolean>('anprSaveUnrecognizedPhotos') ?? true,
     anprAutoRegisterCooldownSeconds: source<number>('anprAutoRegisterCooldownSeconds') ?? 30,
     anprConfidenceThreshold: source<number>('anprConfidenceThreshold') ?? 0.85,

@@ -67,15 +67,40 @@ describe('resolveAnprConfig', () => {
     });
   });
 
-  it('herda da empresa quando o ponto herda, ignorando overrides', () => {
+  it('herda da empresa quando o ponto herda, ignorando overrides de parâmetros', () => {
     const resolved = resolveAnprConfig(company, {
       inheritCompanyConfig: true,
-      anprAutoRegister: false,
       anprConfidenceThreshold: 0.1,
     });
     expect(resolved.anprAutoRegister).toBe(true);
     expect(resolved.anprConfidenceThreshold).toBe(0.9);
     expect(resolved.anprRecognitionMode).toBe('verified');
+  });
+
+  it('desativação explícita do auto-registro no ponto prevalece sobre a herança', () => {
+    const resolved = resolveAnprConfig(company, {
+      inheritCompanyConfig: true,
+      anprAutoRegister: false,
+      anprConfidenceThreshold: 0.1,
+    });
+    expect(resolved.anprAutoRegister).toBe(false);
+    expect(resolved.anprConfidenceThreshold).toBe(0.9);
+    expect(resolved.anprRecognitionMode).toBe('verified');
+  });
+
+  it('mantém a herança do auto-registro quando o ponto não o desativa', () => {
+    expect(
+      resolveAnprConfig(
+        { ...company, anprAutoRegister: true },
+        { inheritCompanyConfig: true, anprAutoRegister: null },
+      ).anprAutoRegister,
+    ).toBe(true);
+    expect(
+      resolveAnprConfig(
+        { ...company, anprAutoRegister: false },
+        { inheritCompanyConfig: true, anprAutoRegister: true },
+      ).anprAutoRegister,
+    ).toBe(false);
   });
 
   it('ponto sobrescreve e completa o restante com a empresa', () => {

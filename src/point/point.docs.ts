@@ -8,6 +8,8 @@ export const POINT_DOCS = {
     'O campo `inheritCompanyConfig` controla a herança de configurações:\n' +
     '- `true` (default): O ponto herda TODAS as configurações ANPR da empresa\n' +
     '- `false`: O ponto usa seus próprios valores dos campos ANPR abaixo\n\n' +
+    '> Exceção: envie `anprAutoRegister: false` para desativar o registro automático apenas neste ponto, ' +
+    'mesmo mantendo a herança dos demais parâmetros (`inheritCompanyConfig: true`).\n\n' +
     '**Campos de configuração ANPR (usados quando inheritCompanyConfig = false):**\n' +
     '- `anprAutoRegister`: Ativa/desativa o registro automático de viagens neste ponto\n' +
     '- `anprSaveUnrecognizedPhotos`: Salva foto quando placa não é reconhecida\n' +
@@ -109,6 +111,8 @@ export const POINT_DOCS = {
     '**Campo `inheritCompanyConfig`:**\n' +
     '- `true`: O ponto herda TODAS as configurações ANPR da empresa (ignora campos ANPR)\n' +
     '- `false`: O ponto usa seus próprios valores dos campos ANPR\n\n' +
+    '> Exceção: `anprAutoRegister: false` prevalece sobre a herança e desativa o registro automático ' +
+    'somente neste ponto; os demais campos continuam vindo da empresa.\n\n' +
     '**Campos ANPR (usados quando inheritCompanyConfig = false):**\n' +
     '- `anprAutoRegister`: Ativa/desativa o registro automático de viagens\n' +
     '- `anprSaveUnrecognizedPhotos`: Salva foto quando placa não é reconhecida\n' +
