@@ -11,9 +11,10 @@ import { MonitoringController } from './monitoring.controller.js';
 import { MonitoringService } from './monitoring.service.js';
 import { MonitoringContextService } from './monitoring-context.service.js';
 import { MonitoringSyncService } from './monitoring-sync.service.js';
+import { NotificationModule } from '../notification/notification.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera, Point, AdminUnity, CameraObservation]), CameraModule, AnprModule, CompanyConfigModule],
+  imports: [TypeOrmModule.forFeature([Camera, Point, AdminUnity, CameraObservation]), CameraModule, AnprModule, CompanyConfigModule, NotificationModule],
   controllers: [MonitoringController],
   providers: [MonitoringService, MonitoringContextService, MonitoringSyncService],
   exports: [MonitoringService, TypeOrmModule],

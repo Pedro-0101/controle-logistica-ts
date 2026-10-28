@@ -1,5 +1,6 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
+import type { NotificationEventsService } from '../notification/notification-events.service.js';
 import { DatabaseErrorFilter } from './database-error.filter.js';
 
 describe('DatabaseErrorFilter', () => {
@@ -14,4 +15,28 @@ describe('DatabaseErrorFilter', () => {
       expect(JSON.stringify(response.json.mock.calls)).not.toMatch(/secret|password|SQL/);
     },
   );
+
+  it('publica erro de sistema apenas para falhas 5xx', () => {
+    const publish = vi.fn();
+    const response = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    const request = { url: '/movement', user: { companyId: 'company-1' } };
+    const host = {
+      switchToHttp: () => ({ getResponse: () => response, getRequest: () => request }),
+    } as unknown as ArgumentsHost;
+    const filter = new DatabaseErrorFilter({ publish } as unknown as NotificationEventsService);
+
+    filter.catch(new QueryFailedError('secret SQL', [], new Error('falha')), host);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'system.error',
+        companyId: 'company-1',
+        payload: expect.objectContaining({ source: 'database', statusCode: 500 }),
+      }),
+    );
+
+    publish.mockClear();
+    const conflict = Object.assign(new Error('duplicado'), { code: '23505' });
+    filter.catch(new QueryFailedError('secret SQL', [], conflict), host);
+    expect(publish).not.toHaveBeenCalled();
+  });
 });

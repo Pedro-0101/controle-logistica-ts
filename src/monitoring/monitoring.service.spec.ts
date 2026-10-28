@@ -13,6 +13,7 @@ import { AnprService } from '../anpr/anpr.service.js';
 import { MediaMTXService } from '../camera/mediamtx.service.js';
 import { SnapshotService } from '../camera/snapshot.service.js';
 import { CompanyConfigService } from '../company-config/company-config.service.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
 import type { Actor } from '../auth/company-scope.js';
 import type { CurrentObservation } from './observation.schema.js';
 
@@ -86,6 +87,7 @@ describe('MonitoringService', () => {
         { provide: MediaMTXService, useValue: mediamtxService },
         { provide: SnapshotService, useValue: snapshotService },
         { provide: CompanyConfigService, useValue: companyConfigService },
+        { provide: NotificationEventsService, useValue: { publish: vi.fn() } },
         { provide: ConfigService, useValue: configService },
       ],
     }).compile();

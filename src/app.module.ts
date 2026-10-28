@@ -17,8 +17,10 @@ import { MonitoringModule } from './monitoring/monitoring.module.js';
 import { CompanyConfigModule } from './company-config/company-config.module.js';
 import { AutoRegistrationModule } from './auto-registration/auto-registration.module.js';
 import { ReportsModule } from './reports/reports.module.js';
+import { NotificationModule } from './notification/notification.module.js';
 import { APP_FILTER } from '@nestjs/core';
 import { DatabaseErrorFilter } from './common/database-error.filter.js';
+import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -66,8 +68,13 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     CompanyConfigModule,
     AutoRegistrationModule,
     ReportsModule,
+    NotificationModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_FILTER, useClass: DatabaseErrorFilter }],
+  providers: [
+    AppService,
+    { provide: APP_FILTER, useClass: DatabaseErrorFilter },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule {}

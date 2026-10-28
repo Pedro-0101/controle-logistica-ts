@@ -20,6 +20,7 @@ import {
 } from '../auth/company-scope.js';
 import { Vehicle } from '../vehicle/entities/vehicle.entity.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
+import { Point } from '../point/entities/point.entity.js';
 import { PointService } from '../point/point.service.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { FindMovementsDtoType } from './dto/find-movements.schema.js';
@@ -29,6 +30,8 @@ import { resolveMovementType } from './movement-type.js';
 import { MovementAutoService } from './movement-auto.service.js';
 import { MovementReconciliationService } from './movement-reconciliation.service.js';
 import { MovementEvidenceService } from './movement-evidence.service.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildMovementNotification } from '../notification/notification-event.factory.js';
 
 /**
  * Fachada de movimentos: CRUD/consultas e delegação para os serviços
@@ -44,17 +47,39 @@ export class MovementService {
     private readonly autoService: MovementAutoService,
     private readonly reconciliationService: MovementReconciliationService,
     private readonly evidenceService: MovementEvidenceService,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   async create(createMovementDto: CreateMovementDto, actor: Actor) {
     const companyId = requireCompanyId(actor);
-    await this.validateReferences(createMovementDto.vehicleId, createMovementDto.pointId, createMovementDto.type, actor);
+    const { vehicle, point } = await this.validateReferences(
+      createMovementDto.vehicleId,
+      createMovementDto.pointId,
+      createMovementDto.type,
+      actor,
+    );
     const movement = this.movementRepository.create({
       ...createMovementDto,
       companyId,
       createdById: actor.userId,
     });
-    return this.movementRepository.save(movement);
+    const saved = await this.movementRepository.save(movement);
+    this.notifications.publish(
+      buildMovementNotification({
+        companyId,
+        movementId: saved.id,
+        pointId: saved.pointId ?? null,
+        pointName: point?.name ?? null,
+        cameraId: null,
+        movementType: saved.type as 'entry' | 'exit',
+        status: saved.status as 'open' | 'closed' | 'pending_review' | 'discarded',
+        autoRegistered: saved.autoRegistered,
+        plate: vehicle.plate ?? saved.recognizedPlate ?? null,
+        action: 'created',
+        occurredAt: saved.dateTime,
+      }),
+    );
+    return saved;
   }
 
   createFromCamera(createMovementFromCameraDto: CreateMovementFromCameraDto, actor: Actor) {
@@ -296,14 +321,21 @@ export class MovementService {
     return this.evidenceService.loadEvidence(movement);
   }
 
-  private async validateReferences(vehicleId: string | null, pointId: string | undefined, type: string, actor: Actor) {
+  private async validateReferences(
+    vehicleId: string | null,
+    pointId: string | undefined,
+    type: string,
+    actor: Actor,
+  ): Promise<{ vehicle: Vehicle; point: Point | null }> {
     if (!vehicleId) throw new BadRequestException('Veículo é obrigatório');
     const vehicle = await this.vehicleService.findOne(vehicleId, actor);
     if (!vehicle.active) throw new BadRequestException('Veículo inativo');
+    let point: Point | null = null;
     if (pointId) {
-      const point = await this.pointService.findOne(pointId, actor);
+      point = await this.pointService.findOne(pointId, actor);
       if (point.companyId !== vehicle.companyId || !point.active) throw new BadRequestException('Ponto inválido para o veículo');
       resolveMovementType(point.type, type as 'entry' | 'exit');
     }
+    return { vehicle, point };
   }
 }

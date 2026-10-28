@@ -1,8 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { MediaMTXService } from './mediamtx.service.js';
 import type { Camera } from './entities/camera.entity.js';
+import type { NotificationEventsService } from '../notification/notification-events.service.js';
 
 const config = { get: () => undefined } as unknown as ConfigService;
+const notifications = { publish: vi.fn() } as unknown as NotificationEventsService;
 
 function makeCamera(overrides: Partial<Camera> = {}): Camera {
   return {
@@ -53,7 +55,7 @@ describe('MediaMTXService', () => {
       return { status: 200 };
     });
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(makeCamera());
 
     expect(bodyOf(fetchMock).source).toBe(
@@ -67,7 +69,7 @@ describe('MediaMTXService', () => {
       return { status: 200 };
     });
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(makeCamera({ ip: '192.168.11.241' }));
 
     expect(bodyOf(fetchMock).source).toBe(
@@ -81,7 +83,7 @@ describe('MediaMTXService', () => {
       throw new Error('offline');
     });
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(makeCamera());
 
     expect(bodyOf(fetchMock).source).toContain('/Streaming/Channels/102');
@@ -90,7 +92,7 @@ describe('MediaMTXService', () => {
   it('infere o path pelo snapshotUrl quando informado (Dahua)', async () => {
     const fetchMock = stubFetch(() => ({ status: 200 }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(
       makeCamera({ snapshotUrl: 'http://192.168.61.162/cgi-bin/snapshot.cgi' }),
     );
@@ -101,7 +103,7 @@ describe('MediaMTXService', () => {
   it('infere o path pelo snapshotUrl quando informado (Hikvision)', async () => {
     const fetchMock = stubFetch(() => ({ status: 200 }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(
       makeCamera({ snapshotUrl: 'http://192.168.11.241/ISAPI/Streaming/channels/102/picture' }),
     );
@@ -112,7 +114,7 @@ describe('MediaMTXService', () => {
   it('usa canal 101 quando o snapshot aponta canal principal', async () => {
     const fetchMock = stubFetch(() => ({ status: 200 }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(
       makeCamera({ snapshotUrl: 'http://192.168.11.241/Streaming/Channels/101' }),
     );
@@ -134,7 +136,7 @@ describe('MediaMTXService', () => {
       return { status: 200 };
     });
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.addPath(makeCamera());
 
     const deleteCall = fetchMock.mock.calls.find(([url]) =>
@@ -147,7 +149,7 @@ describe('MediaMTXService', () => {
   it('remove path ignorando 404', async () => {
     const fetchMock = stubFetch(() => ({ status: 404 }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await service.removePath('camera-1');
 
     expect(
@@ -165,7 +167,7 @@ describe('MediaMTXService', () => {
       }),
     }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await expect(service.pathExists('1')).resolves.toBe(true);
     await expect(service.pathExists('2')).resolves.toBe(false);
     await expect(service.listPaths()).resolves.toEqual(['camera-1']);
@@ -174,13 +176,13 @@ describe('MediaMTXService', () => {
   it('retorna vazio quando a API do MediaMTX falha', async () => {
     stubFetch(() => ({ status: 500 }));
 
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
     await expect(service.listPaths()).resolves.toEqual([]);
     await expect(service.pathExists('camera-1')).resolves.toBe(false);
   });
 
   it('monta as URLs de streaming', () => {
-    const service = new MediaMTXService(config);
+    const service = new MediaMTXService(config, notifications);
 
     expect(service.getStreamUrls('camera-1')).toEqual({
       hlsUrl: 'http://localhost:8888/camera-camera-1/index.m3u8',

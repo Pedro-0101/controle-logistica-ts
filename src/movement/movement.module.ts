@@ -12,6 +12,7 @@ import { VehicleModule } from '../vehicle/vehicle.module.js';
 import { PointModule } from '../point/point.module.js';
 import { MonitoringModule } from '../monitoring/monitoring.module.js';
 import { StorageModule } from '../storage/storage.module.js';
+import { NotificationModule } from '../notification/notification.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { StorageModule } from '../storage/storage.module.js';
     PointModule,
     MonitoringModule,
     StorageModule,
+    NotificationModule,
   ],
   controllers: [MovementController],
   providers: [MovementService, MovementAutoService, MovementReconciliationService, MovementEvidenceService],

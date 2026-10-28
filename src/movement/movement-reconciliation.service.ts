@@ -15,6 +15,9 @@ import { normalizePlate } from '../common/plate.js';
 import { Point } from '../point/entities/point.entity.js';
 import type { ReconcileMovementsDtoType } from './dto/reconcile-movements.schema.js';
 import { MovementEvidenceService } from './movement-evidence.service.js';
+import { CameraObservation } from '../monitoring/observation.entity.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildMovementNotification } from '../notification/notification-event.factory.js';
 
 const MAX_RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 
@@ -36,6 +39,7 @@ export class MovementReconciliationService {
     private readonly dataSource: DataSource,
     private readonly vehicleService: VehicleService,
     private readonly evidenceService: MovementEvidenceService,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   /**
@@ -79,6 +83,9 @@ export class MovementReconciliationService {
     await this.evidenceService.removeEvidenceForObservations(
       discarded.map((movement) => movement.observationId),
     );
+    for (const movement of discarded) {
+      await this.notifyMovement(movement, 'discarded');
+    }
     return discarded;
   }
 
@@ -158,7 +165,47 @@ export class MovementReconciliationService {
 
     // Ocorrências confirmadas não precisam mais da foto de evidência.
     await this.evidenceService.removeEvidenceForObservations(confirmed.observationIds);
+    await this.notifyMovement(confirmed.movement, 'recalculated');
     return confirmed.movement;
+  }
+
+  private async notifyMovement(
+    movement: Movement,
+    action: 'discarded' | 'recalculated',
+  ): Promise<void> {
+    const point = movement.pointId
+      ? await this.dataSource.getRepository(Point).findOneBy({
+          id: movement.pointId,
+          companyId: movement.companyId,
+        })
+      : null;
+    const vehicle = movement.vehicleId
+      ? await this.dataSource.getRepository(Vehicle).findOneBy({
+          id: movement.vehicleId,
+          companyId: movement.companyId,
+        })
+      : null;
+    const observation = movement.observationId
+      ? await this.dataSource.getRepository(CameraObservation).findOneBy({
+          id: movement.observationId,
+        })
+      : null;
+
+    this.notifications.publish(
+      buildMovementNotification({
+        companyId: movement.companyId,
+        movementId: movement.id,
+        pointId: movement.pointId ?? null,
+        pointName: point?.name ?? null,
+        cameraId: observation?.cameraId ?? null,
+        movementType: movement.type as 'entry' | 'exit',
+        status: movement.status as 'open' | 'closed' | 'pending_review' | 'discarded',
+        autoRegistered: movement.autoRegistered,
+        plate: vehicle?.plate ?? movement.recognizedPlate ?? null,
+        action,
+        occurredAt: movement.dateTime,
+      }),
+    );
   }
 
   /**

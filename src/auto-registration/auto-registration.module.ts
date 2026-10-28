@@ -12,6 +12,7 @@ import { PointModule } from '../point/point.module.js';
 import { CompanyConfigModule } from '../company-config/company-config.module.js';
 import { MovementModule } from '../movement/movement.module.js';
 import { StorageModule } from '../storage/storage.module.js';
+import { NotificationModule } from '../notification/notification.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { StorageModule } from '../storage/storage.module.js';
     CompanyConfigModule,
     MovementModule,
     StorageModule,
+    NotificationModule,
   ],
   controllers: [AutoRegistrationController],
   providers: [AutoRegistrationService, RecognitionResolverService, AutoRegistrationEvidenceService],

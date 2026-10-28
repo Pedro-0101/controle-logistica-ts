@@ -10,6 +10,8 @@ import { CameraObservation } from './observation.entity.js';
 import type { CurrentObservation } from './observation.schema.js';
 import { MonitoringContextService } from './monitoring-context.service.js';
 import { MonitoringSyncService } from './monitoring-sync.service.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildCameraErrorNotification } from '../notification/notification-event.factory.js';
 
 @Injectable()
 export class MonitoringService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -21,6 +23,7 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     private readonly snapshotService: SnapshotService,
     private readonly context: MonitoringContextService,
     private readonly syncService: MonitoringSyncService,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   onApplicationBootstrap() {
@@ -45,6 +48,7 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
   async current(cameraId: string, actor: Actor): Promise<CurrentObservation> {
     const camera = await this.cameraInScope(cameraId, actor);
     const state = await this.anpr.currentObservation(cameraId);
+    if (state.status === 'offline') this.notifyOffline(camera);
     if (state.status !== 'confirmed') return state;
     if (!this.fresh(state)) return { ...state, status: 'stale', placa: null, observationId: null };
     let saved = await this.observations.findOneBy({ id: state.observationId! });
@@ -68,6 +72,18 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       id: saved.id, lastSeenAt: new Date(state.lastSeenAt!),
     }).execute();
     return state;
+  }
+
+  private notifyOffline(camera: Camera): void {
+    this.notifications.publish(
+      buildCameraErrorNotification({
+        companyId: camera.companyId,
+        cameraId: camera.id,
+        cameraName: camera.name,
+        pointId: camera.pointId,
+        kind: 'offline',
+      }),
+    );
   }
 
   fresh(state: CurrentObservation): boolean {

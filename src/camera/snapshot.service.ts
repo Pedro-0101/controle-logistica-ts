@@ -1,5 +1,7 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import type { Camera } from './entities/camera.entity.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildCameraErrorNotification } from '../notification/notification-event.factory.js';
 
 const CAMINHOS_SNAPSHOT = [
   '/cgi-bin/snapshot.cgi',
@@ -23,6 +25,8 @@ const CAPTURE_TIMEOUT_MS = 10_000;
 @Injectable()
 export class SnapshotService {
   private readonly logger = new Logger(SnapshotService.name);
+
+  constructor(private readonly notifications: NotificationEventsService) {}
 
   private buildAuthHeader(camera: Camera): string {
     const credentials = Buffer.from(`${camera.username}:${camera.password}`).toString('base64');
@@ -51,11 +55,14 @@ export class SnapshotService {
     const baseUrl = this.buildBaseUrl(camera);
     const authHeader = this.buildAuthHeader(camera);
 
+    let lastError: unknown = null;
+
     // If snapshotUrl is configured, try it first
     if (camera.snapshotUrl) {
       try {
         return await this.fetchSnapshot(camera.snapshotUrl, authHeader);
       } catch (error) {
+        lastError = error;
         this.logger.warn(`Snapshot URL configurada falhou para câmera ${camera.id}: ${error}`);
         // Fall through to auto-discovery
       }
@@ -68,10 +75,22 @@ export class SnapshotService {
         const image = await this.fetchSnapshot(url, authHeader);
         this.logger.log(`Snapshot descoberto em ${url} para câmera ${camera.id}`);
         return image;
-      } catch {
+      } catch (error) {
+        lastError = error;
         continue;
       }
     }
+
+    this.notifications.publish(
+      buildCameraErrorNotification({
+        companyId: camera.companyId,
+        cameraId: camera.id,
+        cameraName: camera.name,
+        pointId: camera.pointId,
+        kind: 'snapshot_failed',
+        error: lastError,
+      }),
+    );
 
     throw new BadGatewayException('Nenhum endpoint de snapshot válido respondeu para a câmera');
   }

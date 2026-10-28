@@ -7,9 +7,10 @@ import { AdminUnity } from '../admin-unity/entities/admin-unity.entity.js';
 import { Point } from '../point/entities/point.entity.js';
 import { MediaMTXService } from './mediamtx.service.js';
 import { SnapshotService } from './snapshot.service.js';
+import { NotificationModule } from '../notification/notification.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera, AdminUnity, Point])],
+  imports: [TypeOrmModule.forFeature([Camera, AdminUnity, Point]), NotificationModule],
   controllers: [CameraController],
   providers: [CameraService, MediaMTXService, SnapshotService],
   exports: [TypeOrmModule, CameraService, MediaMTXService, SnapshotService],

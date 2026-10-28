@@ -15,6 +15,7 @@ import { CompanyConfigService } from '../company-config/company-config.service.j
 import { PointService } from '../point/point.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
 import type { Camera } from '../camera/entities/camera.entity.js';
 import type { CurrentObservation } from '../monitoring/observation.schema.js';
 
@@ -160,6 +161,7 @@ describe('AutoRegistrationService', () => {
         { provide: PointService, useValue: pointService },
         { provide: StorageService, useValue: storage },
         { provide: getRepositoryToken(CameraObservation), useValue: observations },
+        { provide: NotificationEventsService, useValue: { publish: vi.fn() } },
         { provide: ConfigService, useValue: configMock },
       ],
     }).compile();

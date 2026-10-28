@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Camera } from './entities/camera.entity.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildCameraErrorNotification } from '../notification/notification-event.factory.js';
 
 interface MediaMTXPathConfig {
   source: string;
@@ -28,7 +30,10 @@ export class MediaMTXService {
   private readonly webrtcBase: string;
   private readonly apiAuth: string | undefined;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly notifications: NotificationEventsService,
+  ) {
     this.apiBase = (config.get<string>('MEDIAMTX_API_URL') ?? 'http://localhost:9997').replace(/\/+$/, '');
     this.hlsBase = (config.get<string>('MEDIAMTX_HLS_URL') ?? 'http://localhost:8888').replace(/\/+$/, '');
     this.webrtcBase = (config.get<string>('MEDIAMTX_WEBRTC_URL') ?? 'http://localhost:8889').replace(/\/+$/, '');
@@ -156,18 +161,34 @@ export class MediaMTXService {
           if (!response.ok) {
             const retryText = await response.text();
             this.logger.warn(`MediaMTX addPath após recriação falhou (${response.status}): ${retryText}`);
+            this.notifyStreamFailure(camera, `HTTP ${response.status}: ${retryText}`);
           } else {
             this.logger.log(`Path ${pathName} recriado no MediaMTX com sucesso`);
           }
         } else {
           this.logger.warn(`MediaMTX addPath falhou (${response.status}): ${text}`);
+          this.notifyStreamFailure(camera, `HTTP ${response.status}: ${text}`);
         }
       } else {
         this.logger.log(`Path ${pathName} adicionado ao MediaMTX`);
       }
     } catch (error) {
       this.logger.warn(`MediaMTX indisponível ao adicionar path ${pathName}: ${error}`);
+      this.notifyStreamFailure(camera, error);
     }
+  }
+
+  private notifyStreamFailure(camera: Camera, error: unknown): void {
+    this.notifications.publish(
+      buildCameraErrorNotification({
+        companyId: camera.companyId,
+        cameraId: camera.id,
+        cameraName: camera.name,
+        pointId: camera.pointId,
+        kind: 'stream_failed',
+        error,
+      }),
+    );
   }
 
   async removePath(cameraId: string): Promise<void> {

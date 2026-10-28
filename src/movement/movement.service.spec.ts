@@ -17,6 +17,7 @@ import { VehicleService } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
 import type { Actor } from '../auth/company-scope.js';
 
 const rootActor: Actor = {
@@ -86,12 +87,17 @@ describe('MovementService', () => {
       execute: vi.fn().mockResolvedValue(undefined),
     }),
   };
+  const genericRepo = {
+    findOneBy: vi.fn().mockResolvedValue(null),
+    findOne: vi.fn().mockResolvedValue(null),
+    find: vi.fn().mockResolvedValue([]),
+  };
   const resolveRepository = (entity: unknown) => {
     const name = (entity as { name?: string }).name ?? '';
     if (name === 'CameraObservation') return observationRepo;
     if (name === 'Movement') return movementRepoInTx;
     if (name === 'Vehicle') return vehicleRepoInTx;
-    return {};
+    return genericRepo;
   };
   const dataSource = {
     getRepository: vi.fn(resolveRepository),
@@ -118,6 +124,7 @@ describe('MovementService', () => {
         { provide: PointService, useValue: pointService },
         { provide: MonitoringService, useValue: monitoringService },
         { provide: StorageService, useValue: storageService },
+        { provide: NotificationEventsService, useValue: { publish: vi.fn() } },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();

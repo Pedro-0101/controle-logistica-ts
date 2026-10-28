@@ -10,6 +10,8 @@ import { Camera } from '../camera/entities/camera.entity.js';
 import { CameraObservation } from '../monitoring/observation.entity.js';
 import type { CurrentObservation } from '../monitoring/observation.schema.js';
 import type { ResolvedAnprConfig } from '../common/anpr-config.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildExternalApiNotification } from '../notification/notification-event.factory.js';
 
 export interface RecognitionDecision {
   plate: string;
@@ -33,6 +35,7 @@ export class RecognitionResolverService {
     private readonly providers: PlateRecognitionProviderFactory,
     private readonly interactions: ExternalInteractionService,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   /**
@@ -171,6 +174,22 @@ export class RecognitionResolverService {
       responseBytes,
       billableUnits,
     });
+
+    this.notifications.publish(
+      buildExternalApiNotification({
+        companyId: camera.companyId,
+        interactionId,
+        provider: providerName,
+        outcome,
+        pointId: camera.pointId,
+        cameraId: camera.id,
+        cameraName: camera.name,
+        latencyMs: finishedAt.getTime() - startedAt.getTime(),
+        httpStatus,
+        errorMessage,
+        occurredAt: finishedAt,
+      }),
+    );
 
     await this.markExternalChecked(
       observation,

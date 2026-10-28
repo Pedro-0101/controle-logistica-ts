@@ -10,6 +10,12 @@ import { CompanyConfigService } from '../company-config/company-config.service.j
 import type { CompanyConfig } from '../company-config/entities/company-config.entity.js';
 import { resolveAnprConfig } from '../common/anpr-config.js';
 import { MonitoringContextService } from './monitoring-context.service.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import {
+  buildCameraErrorNotification,
+  buildSystemErrorNotification,
+  errorMessageOf,
+} from '../notification/notification-event.factory.js';
 
 /**
  * Sincroniza os monitores ANPR e os paths do MediaMTX com as câmeras válidas,
@@ -31,6 +37,7 @@ export class MonitoringSyncService {
     private readonly companyConfigService: CompanyConfigService,
     private readonly config: ConfigService,
     private readonly context: MonitoringContextService,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   bootstrap() {
@@ -44,8 +51,14 @@ export class MonitoringSyncService {
   reconcile(): Promise<void> {
     if (this.stopped) return Promise.resolve();
     if (this.running) return this.running;
-    this.running = this.sync().catch(() => {
+    this.running = this.sync().catch((error: unknown) => {
       this.logger.warn('Não foi possível sincronizar o monitoramento; nova tentativa em 5 segundos');
+      this.notifications.publish(
+        buildSystemErrorNotification({
+          source: 'monitoring.sync',
+          message: errorMessageOf(error),
+        }),
+      );
     }).finally(() => { this.running = undefined; });
     return this.running;
   }
@@ -80,7 +93,19 @@ export class MonitoringSyncService {
             minConfidence: Number(resolved.anprConfidenceThreshold),
           });
           this.registered.add(camera.id);
-        } catch (error: any) { this.logger.warn(`Monitor indisponível para câmera ${camera.id}: ${error?.message ?? error}`); }
+        } catch (error: unknown) {
+          this.logger.warn(`Monitor indisponível para câmera ${camera.id}: ${errorMessageOf(error)}`);
+          this.notifications.publish(
+            buildCameraErrorNotification({
+              companyId: camera.companyId,
+              cameraId: camera.id,
+              cameraName: camera.name,
+              pointId: camera.pointId,
+              kind: 'sync_failed',
+              error,
+            }),
+          );
+        }
       }
     }
     // Single Nest owner per Python instance; also removes leftovers after a Nest restart.
@@ -109,6 +134,16 @@ export class MonitoringSyncService {
             this.logger.log(`Path ${pathName} adicionado ao MediaMTX na inicialização`);
           } catch (error) {
             this.logger.warn(`Falha ao adicionar path ${pathName} na inicialização: ${error}`);
+            this.notifications.publish(
+              buildCameraErrorNotification({
+                companyId: camera.companyId,
+                cameraId: camera.id,
+                cameraName: camera.name,
+                pointId: camera.pointId,
+                kind: 'stream_failed',
+                error,
+              }),
+            );
           }
         }
       }
@@ -129,6 +164,12 @@ export class MonitoringSyncService {
       }
     } catch (error) {
       this.logger.warn(`Falha ao sincronizar câmeras com MediaMTX: ${error}`);
+      this.notifications.publish(
+        buildSystemErrorNotification({
+          source: 'monitoring.mediamtx',
+          message: errorMessageOf(error),
+        }),
+      );
     }
   }
 }

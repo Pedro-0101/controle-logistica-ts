@@ -17,6 +17,8 @@ import { VehicleService } from '../vehicle/vehicle.service.js';
 import { PointService } from '../point/point.service.js';
 import { Point } from '../point/entities/point.entity.js';
 import { resolveMovementType } from './movement-type.js';
+import { NotificationEventsService } from '../notification/notification-events.service.js';
+import { buildMovementNotification } from '../notification/notification-event.factory.js';
 
 /**
  * Fluxos de criação automática/por câmera e as consultas de apoio (cooldown,
@@ -33,6 +35,7 @@ export class MovementAutoService {
     private readonly dataSource: DataSource,
     private readonly vehicleService: VehicleService,
     private readonly pointService: PointService,
+    private readonly notifications: NotificationEventsService,
   ) {}
 
   async createFromCamera(createMovementFromCameraDto: CreateMovementFromCameraDto, actor: Actor) {
@@ -44,7 +47,8 @@ export class MovementAutoService {
 
   async createFromObservation(dto: CreateMovementFromObservationDto, actor: Actor) {
     const companyId = requireCompanyId(actor);
-    return this.dataSource.transaction(async (manager) => {
+    let created: { pointName: string; cameraId: string; plate: string } | null = null;
+    const result = await this.dataSource.transaction(async (manager) => {
       // Serialize confirmations of this observation, including across API processes.
       const observation = await manager.getRepository(CameraObservation).findOne({
         where: { id: dto.observationId, companyId }, lock: { mode: 'pessimistic_write' },
@@ -76,8 +80,14 @@ export class MovementAutoService {
         companyId, createdById: actor.userId,
       }));
       await this.closeUnitVisit(manager, movement, point, actor.userId);
+      created = { pointName: point.name, cameraId: observation.cameraId, plate: vehicle.plate };
       return { movement, vehicle };
     });
+
+    if (created) {
+      this.publishMovement(result.movement, created);
+    }
+    return result;
   }
 
   async createAutoRegistered(params: {
@@ -94,7 +104,8 @@ export class MovementAutoService {
       recognitionProvider, recognitionConfidence,
     } = params;
 
-    return this.dataSource.transaction(async (manager) => {
+    let created: { pointName: string; cameraId: string; plate: string } | null = null;
+    const saved = await this.dataSource.transaction(async (manager) => {
       const existing = await manager.getRepository(Movement).findOneBy({ observationId: observation.id, companyId });
       if (existing) return existing;
 
@@ -120,8 +131,39 @@ export class MovementAutoService {
 
       const saved = await manager.getRepository(Movement).save(movement);
       await this.closeUnitVisit(manager, saved, point, systemUserId);
+      created = {
+        pointName: point.name,
+        cameraId: observation.cameraId,
+        plate: vehicle?.plate ?? recognizedPlate,
+      };
       return saved;
     });
+
+    if (created) {
+      this.publishMovement(saved, created);
+    }
+    return saved;
+  }
+
+  private publishMovement(
+    movement: Movement,
+    context: { pointName: string; cameraId: string; plate: string },
+  ): void {
+    this.notifications.publish(
+      buildMovementNotification({
+        companyId: movement.companyId,
+        movementId: movement.id,
+        pointId: movement.pointId ?? null,
+        pointName: context.pointName,
+        cameraId: context.cameraId,
+        movementType: movement.type as 'entry' | 'exit',
+        status: movement.status as 'open' | 'closed' | 'pending_review' | 'discarded',
+        autoRegistered: movement.autoRegistered,
+        plate: context.plate,
+        action: 'created',
+        occurredAt: movement.dateTime,
+      }),
+    );
   }
 
   async hasRecentMovement(vehicleId: string, pointId: string, cooldownSeconds: number, companyId: string): Promise<boolean> {
