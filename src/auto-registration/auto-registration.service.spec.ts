@@ -57,10 +57,18 @@ const baseCompanyConfig = () => ({
   anprFirstReadMinConfidence: 0.85,
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+type ObservationProcessor = { processObservation(camera: Camera, observation: CurrentObservation): Promise<boolean> };
+
 describe('AutoRegistrationService', () => {
   let service: AutoRegistrationService;
-  let monitoring: { getActiveObservations: ReturnType<typeof vi.fn>; ensureObservationPersisted: ReturnType<typeof vi.fn> };
-  let anpr: { observationImage: ReturnType<typeof vi.fn> };
+  let monitoring: { getActiveObservations: ReturnType<typeof vi.fn>; getActiveObservation: ReturnType<typeof vi.fn>; ensureObservationPersisted: ReturnType<typeof vi.fn> };
+  let anpr: { observationImage: ReturnType<typeof vi.fn>; monitorEvents: ReturnType<typeof vi.fn> };
   let providers: { get: ReturnType<typeof vi.fn> };
   let interactions: { record: ReturnType<typeof vi.fn>; attachMovement: ReturnType<typeof vi.fn> };
   let vehicleService: { findByPlate: ReturnType<typeof vi.fn> };
@@ -98,9 +106,18 @@ describe('AutoRegistrationService', () => {
 
     monitoring = {
       getActiveObservations: vi.fn(async () => [{ camera, observation: state }]),
+      getActiveObservation: vi.fn(async (cameraId: string) => {
+        const load = monitoring.getActiveObservations as unknown as () => Promise<Array<{ camera: Camera; observation: CurrentObservation }>>;
+        return (await load()).find((item) => item.camera.id === cameraId) ?? null;
+      }),
       ensureObservationPersisted: vi.fn(async () => observation),
     };
-    anpr = { observationImage: vi.fn(async () => Buffer.from('image')) };
+    anpr = {
+      observationImage: vi.fn(async () => Buffer.from('image')),
+      monitorEvents: vi.fn((_cursor: string | undefined, signal: AbortSignal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      })),
+    };
     providers = { get: vi.fn(() => provider) };
     interactions = {
       record: vi.fn(async () => 'interaction-1'),
@@ -148,6 +165,115 @@ describe('AutoRegistrationService', () => {
     }).compile();
 
     service = module.get<AutoRegistrationService>(AutoRegistrationService);
+  });
+
+  afterEach(async () => { await service.onModuleDestroy(); });
+
+  it('registers an event immediately, resumes its cursor, and aborts the pending poll on shutdown', async () => {
+    anpr.monitorEvents.mockResolvedValueOnce({ cursor: 'epoch:1', reset: false, events: [{ cameraId: camera.id }] });
+    service.onApplicationBootstrap();
+    await vi.waitFor(() => expect(movementService.createAutoRegistered).toHaveBeenCalledTimes(1));
+    expect(anpr.monitorEvents).toHaveBeenLastCalledWith('epoch:1', expect.any(AbortSignal));
+    expect(service.getStats().counts.events).toBe(1);
+    await service.onModuleDestroy();
+    expect(anpr.monitorEvents.mock.calls.at(-1)![1].aborted).toBe(true);
+    expect(service.getStats().queue.active).toBe(0);
+  });
+
+  it('repairs current observations after a lost or restarted event cursor', async () => {
+    anpr.monitorEvents.mockResolvedValueOnce({ cursor: 'new-epoch:0', reset: true, events: [] });
+    service.onApplicationBootstrap();
+    await vi.waitFor(() => expect(movementService.createAutoRegistered).toHaveBeenCalledTimes(1));
+    expect(service.getStats().counts.resets).toBe(1);
+    expect(monitoring.getActiveObservations).toHaveBeenCalled();
+  });
+
+  it('reconnects after an event transport failure without forgetting the replay cursor', async () => {
+    anpr.monitorEvents
+      .mockResolvedValueOnce({ cursor: 'epoch:5', reset: false, events: [] })
+      .mockRejectedValueOnce(new Error('disconnected'))
+      .mockResolvedValueOnce({ cursor: 'epoch:6', reset: false, events: [{ cameraId: camera.id }] });
+    service.onApplicationBootstrap();
+    await vi.waitFor(() => expect(movementService.createAutoRegistered).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(anpr.monitorEvents.mock.calls[2][0]).toBe('epoch:5');
+    expect(service.getStats().counts.reconnects).toBe(1);
+  });
+
+  it('bounds concurrency to four while independent points can complete', async () => {
+    const active = Array.from({ length: 6 }, (_, index) => ({
+      camera: { ...camera, id: `camera-${index}`, pointId: `point-${index}` },
+      observation: { ...state, cameraId: `camera-${index}`, observationId: `obs-${index}` },
+    }));
+    monitoring.getActiveObservations.mockResolvedValue(active);
+    const gates = active.map(() => deferred<boolean>());
+    const process = vi.spyOn(service as unknown as ObservationProcessor, 'processObservation')
+      .mockImplementation((item) => gates[Number(item.id.split('-')[1])].promise);
+    const repair = service.reconcile();
+    await vi.waitFor(() => expect(process).toHaveBeenCalledTimes(4));
+    expect(service.getStats().queue).toMatchObject({ active: 4, pending: 2 });
+    gates[0].resolve(true);
+    await vi.waitFor(() => expect(process).toHaveBeenCalledTimes(5));
+    for (const gate of gates) gate.resolve(true);
+    await repair;
+    expect(process).toHaveBeenCalledTimes(6);
+    expect(service.getStats().queue.active).toBe(0);
+  });
+
+  it('serializes cameras at the same point without blocking another point', async () => {
+    const active = [
+      { camera, observation: state },
+      { camera: { ...camera, id: 'camera-2' }, observation: { ...state, cameraId: 'camera-2', observationId: 'obs-2' } },
+      { camera: { ...camera, id: 'camera-3', pointId: 'point-3' }, observation: { ...state, cameraId: 'camera-3', observationId: 'obs-3' } },
+    ];
+    monitoring.getActiveObservations.mockResolvedValue(active);
+    const gate = deferred<boolean>();
+    const process = vi.spyOn(service as unknown as ObservationProcessor, 'processObservation')
+      .mockImplementation((item) => item.id === camera.id ? gate.promise : Promise.resolve(true));
+    const repair = service.reconcile();
+    await vi.waitFor(() => expect(process).toHaveBeenCalledTimes(2));
+    expect(process.mock.calls.map(([item]) => item.id)).toEqual(['camera-1', 'camera-3']);
+    gate.resolve(true);
+    await repair;
+    expect(process.mock.calls.map(([item]) => item.id)).toEqual(['camera-1', 'camera-3', 'camera-2']);
+  });
+
+  it('coalesces repeated events while a camera is processing and re-reads confirmation afterward', async () => {
+    const gate = deferred<boolean>();
+    const process = vi.spyOn(service as unknown as ObservationProcessor, 'processObservation')
+      .mockImplementationOnce(() => gate.promise).mockResolvedValue(true);
+    monitoring.getActiveObservation.mockResolvedValue({ camera, observation: { ...state, status: 'candidate' } });
+    const nextBatch = deferred<{ cursor: string; reset: boolean; events: { cameraId: string }[] }>();
+    anpr.monitorEvents
+      .mockResolvedValueOnce({ cursor: 'epoch:1', reset: false, events: [{ cameraId: camera.id }] })
+      .mockImplementationOnce(() => nextBatch.promise);
+    service.onApplicationBootstrap();
+    await vi.waitFor(() => expect(process).toHaveBeenCalledTimes(1));
+    nextBatch.resolve({ cursor: 'epoch:2', reset: false, events: [{ cameraId: camera.id }, { cameraId: camera.id }] });
+    await vi.waitFor(() => expect(service.getStats().queue.pending).toBe(1));
+    expect(process).toHaveBeenCalledTimes(1);
+    monitoring.getActiveObservation.mockResolvedValue({ camera, observation: state });
+    gate.resolve(false);
+    await vi.waitFor(() => expect(process).toHaveBeenCalledTimes(2));
+    expect(process.mock.calls[1][1].status).toBe('confirmed');
+  });
+
+  it('ignores a state that expired or lost its valid context while queued', async () => {
+    monitoring.getActiveObservation.mockResolvedValue(null);
+    await service.reconcile();
+    expect(movementService.createAutoRegistered).not.toHaveBeenCalled();
+    expect(service.getStats().counts.ignored).toBe(1);
+  });
+
+  it('reports bounded registration timings and counts, with null for unsampled durations', async () => {
+    expect(service.getStats().durations.processing).toMatchObject({ count: 0, avg: null, p95: null });
+    await service.reconcile();
+    const stats = service.getStats();
+    expect(stats.counts).toMatchObject({ registered: 1, processed: 1, errors: 0 });
+    expect(stats.durations.processing.count).toBe(1);
+    expect(stats.durations.captureToRegistration.count).toBe(1);
+    expect(stats.durationUnit).toBe('ms');
+    await service.reconcile();
+    expect(service.getStats().counts.registered).toBe(1);
   });
 
   it('modo local usa apenas a placa local e não chama a API externa', async () => {

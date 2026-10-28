@@ -3,6 +3,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AnprService } from './anpr/anpr.service.js';
 import { MonitoringService } from './monitoring/monitoring.service.js';
+import { AutoRegistrationService } from './auto-registration/auto-registration.service.js';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -12,6 +13,7 @@ describe('AppController', () => {
       controllers: [AppController],
       providers: [
         AppService,
+        { provide: AutoRegistrationService, useValue: { getStats: vi.fn() } },
         { provide: AnprService, useValue: { listMonitors: vi.fn() } },
         {
           provide: MonitoringService,

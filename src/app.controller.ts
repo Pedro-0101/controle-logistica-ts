@@ -18,10 +18,9 @@ export class AppController {
   @Get('stats')
   @ApiOperation({
     summary: 'Estatísticas do sistema',
-    description: 'Retorna dados de monitoramento ANPR: monitores ativos, observações confirmadas com placa, confiança e status.',
+    description: 'Retorna monitores e observações, métricas de captura/fila/inferência do Python e registro automático no Nest. Durações e janelas são descritas na resposta; serviço indisponível é indicado explicitamente, sem simular métricas zeradas.',
   })
   @ApiResponse({ status: 200, description: 'Estatísticas do sistema retornadas com sucesso' })
-  @ApiResponse({ status: 502, description: 'Serviço ANPR indisponível' })
   getStats() {
     return this.appService.getStats();
   }

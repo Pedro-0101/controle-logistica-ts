@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException, OnApplicationBootstrap, OnModule
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { setTimeout as delay } from 'node:timers/promises';
+import { AnprService } from '../anpr/anpr.service.js';
 import { MonitoringService } from '../monitoring/monitoring.service.js';
 import { ExternalInteractionService } from '../anpr/external-interaction.service.js';
 import { VehicleService } from '../vehicle/vehicle.service.js';
@@ -22,6 +24,18 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
   private running?: Promise<void>;
   private stopped = false;
   private readonly processed = new Set<string>();
+  private readonly stop = new AbortController();
+  private eventLoop?: Promise<void>;
+  private cursor?: string;
+  private readonly pending = new Map<string, number>();
+  private readonly jobs = new Map<string, Promise<void>>();
+  private readonly cameraPoints = new Map<string, string>();
+  private readonly busyPoints = new Set<string>();
+  private readonly concurrency = 4;
+  private readonly maxPending = 128;
+  private readonly startedAt = new Date().toISOString();
+  private readonly counts = { events: 0, reconnects: 0, resets: 0, overflow: 0, processed: 0, waitingConfirmation: 0, ignored: 0, errors: 0, registered: 0 };
+  private readonly timings = { queueWaitMs: [] as number[], processingMs: [] as number[], captureToRegistrationMs: [] as number[] };
 
   constructor(
     private readonly monitoring: MonitoringService,
@@ -34,19 +48,22 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
     private readonly evidenceService: AutoRegistrationEvidenceService,
     @InjectRepository(CameraObservation) private readonly observations: Repository<CameraObservation>,
     private readonly config: ConfigService,
+    private readonly anpr: AnprService,
   ) {}
 
   onApplicationBootstrap() {
     if (this.config.get<string>('MONITORING_ENABLED') === 'false') return;
-    void this.reconcile();
-    this.timer = setInterval(() => { void this.reconcile(); }, 3000);
+    if (this.eventLoop || this.stopped) return;
+    this.eventLoop = this.consumeEvents();
+    // Repair only: normal registration is triggered immediately by Python events.
+    this.timer = setInterval(() => { void this.reconcile(); }, 30_000);
     this.timer.unref();
   }
 
   reconcile(): Promise<void> {
     if (this.stopped) return Promise.resolve();
     if (this.running) return this.running;
-    this.running = this.process().catch((err) => {
+    this.running = this.repair().catch((err) => {
       this.logger.warn(`Auto-registration error: ${err?.message ?? err}`);
     }).finally(() => { this.running = undefined; });
     return this.running;
@@ -54,33 +71,140 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
 
   async onModuleDestroy() {
     this.stopped = true;
+    this.stop.abort();
+    this.pending.clear();
     if (this.timer) clearInterval(this.timer);
+    await this.eventLoop;
     await this.running;
+    await Promise.all(this.jobs.values());
   }
 
-  private async process() {
-    const active = await this.monitoring.getActiveObservations();
-    if (active.length > 0) {
-      this.logger.debug(`[auto-reg] ${active.length} observacao(oes) ativa(s) para processar`);
-    }
-    for (const { camera, observation } of active) {
-      if (this.stopped) return;
-      if (this.processed.has(observation.observationId!)) continue;
+  private async consumeEvents() {
+    let failures = 0;
+    while (!this.stopped) {
       try {
-        // `false` = candidata aguardando confirmação; não marcar como processada
-        // para poder registrar quando o Python confirmar as N leituras.
-        const handled = await this.processObservation(camera, observation);
-        if (handled) this.processed.add(observation.observationId!);
-      } catch (err) {
-        this.logger.warn(`Failed to auto-register for camera ${camera.id}: ${String(err)}`);
+        const batch = await this.anpr.monitorEvents(this.cursor, this.stop.signal);
+        if (this.stopped) break;
+        this.cursor = batch.cursor;
+        if (batch.reset) {
+          this.counts.resets++;
+          // Independent of slow registration/provider calls; replay remains live.
+          void this.reconcile();
+        }
+        failures = 0;
+        for (const event of batch.events) {
+          this.counts.events++;
+          this.enqueue(event.cameraId);
+        }
+      } catch {
+        if (this.stopped) break;
+        this.counts.reconnects++;
+        failures++;
+        this.logger.warn('Fluxo de eventos ANPR indisponível; reconectando com o último cursor');
+        try { await delay(Math.min(30_000, 1000 * 2 ** Math.min(failures - 1, 5)), undefined, { signal: this.stop.signal }); }
+        catch { break; }
       }
     }
-    // Evitar memory leak: manter apenas os últimos 1000 IDs processados
+  }
+
+  private enqueue(cameraId: string) {
+    if (this.stopped) return;
+    if (!this.pending.has(cameraId)) {
+      if (this.pending.size >= this.maxPending) {
+        this.counts.overflow++;
+        this.cursor = undefined; // The next poll requests a full resync.
+        return;
+      }
+      this.pending.set(cameraId, performance.now());
+    }
+    this.pump();
+  }
+
+  private pump() {
+    if (this.stopped) return;
+    for (const [cameraId, queuedAt] of this.pending) {
+      if (this.jobs.size >= this.concurrency) break;
+      if (this.jobs.has(cameraId)) continue;
+      const point = this.cameraPoints.get(cameraId);
+      if (point && this.busyPoints.has(point)) continue;
+      this.pending.delete(cameraId);
+      const job = this.processCamera(cameraId, queuedAt).catch((error) => {
+        this.counts.errors++;
+        this.logger.warn(`Failed to auto-register for camera ${cameraId}: ${String(error)}`);
+      }).finally(() => {
+        this.jobs.delete(cameraId);
+        if (!this.pending.has(cameraId)) this.cameraPoints.delete(cameraId);
+        this.pump();
+      });
+      this.jobs.set(cameraId, job);
+    }
+  }
+
+  private async processCamera(cameraId: string, queuedAt: number) {
+    const active = await this.monitoring.getActiveObservation(cameraId);
+    if (this.stopped || !active) { this.counts.ignored++; return; }
+    const { camera, observation } = active;
+    const pointKey = `${camera.companyId}:${camera.pointId}`;
+    this.cameraPoints.set(cameraId, pointKey);
+    if (this.busyPoints.has(pointKey)) {
+      // Preserve cooldown ordering between two cameras at the same point, without
+      // occupying a worker while another camera awaits its external provider.
+      this.pending.set(cameraId, queuedAt);
+      return;
+    }
+    if (this.processed.has(observation.observationId!)) { this.counts.ignored++; return; }
+    this.busyPoints.add(pointKey);
+    const started = performance.now();
+    this.sample('queueWaitMs', started - queuedAt);
+    try {
+      // State was refreshed after queueing. An accepted observation remains valid
+      // for an in-flight external check, even if its live image later expires.
+      const handled = await this.processObservation(camera, observation);
+      if (handled) {
+        this.processed.add(observation.observationId!);
+        this.counts.processed++;
+      } else this.counts.waitingConfirmation++;
+    } finally {
+      this.sample('processingMs', performance.now() - started);
+      this.busyPoints.delete(pointKey);
+    }
     if (this.processed.size > 1000) {
       const arr = [...this.processed];
       this.processed.clear();
       for (const id of arr.slice(-500)) this.processed.add(id);
     }
+  }
+
+  private async repair() {
+    const active = await this.monitoring.getActiveObservations();
+    for (const { camera } of active) this.enqueue(camera.id);
+    while (!this.stopped && this.jobs.size) await Promise.all(this.jobs.values());
+  }
+
+  private sample(metric: keyof typeof this.timings, value: number) {
+    if (!Number.isFinite(value) || value < 0) return;
+    const samples = this.timings[metric];
+    samples.push(value);
+    if (samples.length > 1000) samples.shift();
+  }
+
+  getStats() {
+    const summarize = (samples: number[]) => {
+      const sorted = [...samples].sort((a, b) => a - b);
+      const count = sorted.length;
+      return { count, avg: count ? samples.reduce((sum, n) => sum + n, 0) / count : null,
+        p50: count ? sorted[Math.floor((count - 1) * 0.5)] : null,
+        p95: count ? sorted[Math.ceil(count * 0.95) - 1] : null,
+        max: count ? sorted[count - 1] : null };
+    };
+    return {
+      source: 'nest_auto_registration', startedAt: this.startedAt, durationUnit: 'ms',
+      sampleWindow: 'last_1000_per_metric', countersScope: 'since_process_start',
+      registeredMeaning: 'successful_registration_completions_including_idempotent_returns',
+      captureToRegistrationClock: 'wall_clock_across_services_requires_synchronized_clocks',
+      counts: { ...this.counts }, queue: { pending: this.pending.size, active: this.jobs.size, concurrency: this.concurrency, maxPending: this.maxPending },
+      durations: { queueWait: summarize(this.timings.queueWaitMs), processing: summarize(this.timings.processingMs), captureToRegistration: summarize(this.timings.captureToRegistrationMs) },
+    };
   }
 
   /**
@@ -300,6 +424,8 @@ export class AutoRegistrationService implements OnApplicationBootstrap, OnModule
       recognitionProvider: recognition.provider,
       recognitionConfidence: recognition.confidence,
     });
+    this.counts.registered++;
+    this.sample('captureToRegistrationMs', Date.now() - Date.parse(state.capturedAt!));
 
     if (recognition.interactionId) {
       await this.interactions.attachMovement(
