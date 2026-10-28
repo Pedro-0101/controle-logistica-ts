@@ -241,6 +241,59 @@ ANPR_CROP_BORDAS_PERCENT=0.10
 O recorte é feito antes do YOLO e do fallback PaddleOCR; os bounding boxes
 retornados são remapeados para as coordenadas da imagem original.
 
+### Leitura OCR dos recortes
+
+Nos recortes detectados pelo YOLO, o microserviço usa `TextRecognition` com o
+mesmo modelo de leitura selecionado para `ANPR_LANG` (ou
+`ANPR_TEXT_RECOGNITION_MODEL`, quando definido). Isso evita inicializar o
+detector de texto do `PaddleOCR` para cada recorte. Se o leitor direto não
+interpretar o recorte como placa, o pipeline completo é repetido **apenas no
+recorte** (útil para placas de duas linhas/inclinadas). O fallback na imagem
+inteira continua desligado por padrão (`ANPR_FULL_FRAME_FALLBACK=false`).
+
+```env
+ANPR_TEXT_RECOGNITION_MODEL=
+ANPR_CROP_PIPELINE_FALLBACK=true
+```
+
+### Captura adaptativa
+
+Cada câmera tem no máximo uma captura pendente e uma inferência em execução. Em
+cena estática, o microserviço compara uma versão reduzida em tons de cinza e
+evita baixar/analisar quadros repetidos; uma inferência forçada a cada
+`ANPR_FORCE_PROBE_SECONDS` garante que uma placa parada ainda seja lida. Durante
+observações `candidate`/`confirmed` o filtro não suprime inferências.
+
+```env
+ANPR_SCENE_FILTER=true
+ANPR_SCENE_CHANGE_THRESHOLD=2
+ANPR_FORCE_PROBE_SECONDS=2
+ANPR_IDLE_CAPTURE_MAX_SECONDS=2
+```
+
+### Métricas e eventos do serviço Python
+
+`GET /stats` (porta 8000, também agregado em `GET /stats` da API principal)
+mantém amostras limitadas em memória:
+
+- campos legados (`count`, `avg_ms`, percentis): somente inferências com placa;
+  média/contagem acumuladas e percentis na janela deslizante;
+- `counters`: sucesso, sem placa, erro, snapshots, bytes, substituições,
+  expirações e skips (desde o início do processo);
+- `durations` em ms: `queue_wait`, `capture`, `frame_age` (idade do frame quando
+  a inferência começa) e `capture_to_result` (não inclui o registro no Nest);
+- `queue`: profundidade atual, workers e capacidade
+  (`max_monitors + max_manual_pending`);
+- `cameras`: as 128 câmeras mais recentemente ativas, sem imagens/URLs/senhas.
+
+O registro automático não faz varredura a cada 3 s. O Nest consome
+`GET /monitor-events?cursor=<epoch:sequence>&wait_seconds=20`, que retorna
+`{ cursor, reset, events: [{ cameraId }] }`; `reset` sinaliza cursor perdido ou
+reinício e dispara uma recuperação das câmeras atuais. Cada evento busca o estado
+novo no Python antes de processar. Há concorrência limitada entre câmeras,
+serialização por ponto (preservando cooldown) e uma reconciliação de reparo a
+cada 30 s.
+
 ## Endpoints principais
 
 | Método | Rota | Descrição |
