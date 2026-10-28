@@ -203,7 +203,7 @@ def test_only_meaningful_observation_changes_emit_events(monkeypatch, candidate)
     assert item.events.sequence == 4
 
 
-def test_capture_reuses_jpeg_and_skips_download_while_busy(monkeypatch, jpeg):
+def test_capture_continues_while_inference_is_busy(monkeypatch, jpeg):
     async def run():
         scheduler = InferenceScheduler()
         item = monitor(monkeypatch, scheduler)
@@ -214,27 +214,32 @@ def test_capture_reuses_jpeg_and_skips_download_while_busy(monkeypatch, jpeg):
         async def sleep(_):
             nonlocal calls
             calls += 1
-            if calls == 1:
-                assert item.client.capture.await_count == 0
-                scheduler.active_key = None
-            else:
-                item.closed = True
+            assert item.client.capture.await_count == 1
+            item.closed = True
             await original_sleep(0)
         monkeypatch.setattr("app.routers.monitors.asyncio.sleep", sleep)
         monkeypatch.setattr("app.routers.monitors.cv2.imencode", lambda *args: pytest.fail("JPEG must not be recompressed"))
         try:
             await item._capture()
             assert item.client.capture.await_count == 1
-            queued = scheduler.pending[("camera", item.camera_id)]
-            item.closed = False
-            queued[2](None, None)
             stats = scheduler.stats.snapshot()
             assert stats["counters"]["snapshot_bytes"] == len(jpeg)
             assert stats["counters"]["snapshots"] == 1
-            assert stats["counters"]["capture_backpressure_skipped"] == 1
+            assert stats["counters"]["admission_skipped"] == 1
+            assert not scheduler.pending
         finally:
             await scheduler.close()
     asyncio.run(run())
+
+
+def test_idle_capture_interval_respects_absolute_ceiling(monkeypatch):
+    item = monitor(monkeypatch)
+    item.config = MonitorIn(host="test", interval_seconds=1.0)
+    item.idle_captures = 4
+    monkeypatch.setattr(settings, "anpr_idle_capture_max_seconds", .25)
+    assert item._capture_delay() == .25
+    item.status = "candidate"
+    assert item._capture_delay() == .25
 
 
 def test_text_recognition_uses_pipeline_selected_model_without_loading_detector(monkeypatch):
@@ -266,6 +271,7 @@ def test_full_crop_fallback_reuses_selected_reader_model(monkeypatch):
     constructor = MagicMock(return_value=SimpleNamespace(predict=lambda image: [{"rec_text": "nope", "rec_score": .1}]))
     monkeypatch.setitem(sys.modules, "paddleocr", SimpleNamespace(PaddleOCR=Pipeline, TextRecognition=constructor))
     monkeypatch.setattr(settings, "anpr_text_recognition_model", "")
+    monkeypatch.setattr(settings, "anpr_crop_pipeline_fallback", True)
     reader = PlacaRecognizer("en")
     assert ("ABC1D23", .9) in reader._read_crop(np.zeros((30, 120, 3), np.uint8))
     assert seen["pipeline"]["text_detection_model_name"] == "same-detector"

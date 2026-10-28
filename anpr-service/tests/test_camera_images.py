@@ -90,6 +90,27 @@ def test_discovery_cached_and_recovers(jpeg, monkeypatch):
     asyncio.run(run())
 
 
+def test_discovery_backoff_after_failure(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        raise httpx.ConnectError("offline")
+    with_transport(monkeypatch, handler)
+    async def run():
+        camera = SnapshotClient(CameraConfig("camera"))
+        try:
+            with pytest.raises(CameraNaoConfiguradaError):
+                await camera.capture()
+            attempts = len(calls)
+            # The second call is rejected before any HTTP request.
+            with pytest.raises(CameraNaoConfiguradaError):
+                await camera.capture()
+            assert len(calls) == attempts
+        finally:
+            await camera.close()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("failure", ["http", "empty", "large", "network"])
 def test_explicit_snapshot_failures_no_credential_leak(failure, jpeg, monkeypatch):
     def handler(request):

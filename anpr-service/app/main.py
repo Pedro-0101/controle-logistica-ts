@@ -13,6 +13,8 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logging.getLogger("anpr").setLevel(logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

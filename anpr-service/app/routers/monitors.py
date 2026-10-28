@@ -119,6 +119,12 @@ class CameraMonitor:
                 else:
                     self.invalidate("waiting")
             return
+        if result.confianca < self.config.min_confidence:
+            logger.debug(
+                "[monitor:%s] Leitura ignorada por baixa confiança: %.2f < %.2f",
+                self.camera_id, result.confianca, self.config.min_confidence,
+            )
+            return
         self.historico.append((result.placa.valor, monotonic))
         votos = self._votes(monotonic)
         mais_votada = max(votos, key=votos.get)
@@ -167,7 +173,10 @@ class CameraMonitor:
         return infer
 
     def _capture_delay(self):
-        base = self.config.interval_seconds
+        configured = self.config.interval_seconds
+        # ANPR_IDLE_CAPTURE_MAX_SECONDS also acts as a hard ceiling: setting it
+        # below the camera interval keeps the capture loop fast for moving cars.
+        base = min(configured, settings.anpr_idle_capture_max_seconds)
         if not settings.anpr_scene_filter or not self.idle_captures or self.status in ("candidate", "confirmed"):
             return base
         ceiling = max(base, min(settings.anpr_idle_capture_max_seconds,
@@ -178,11 +187,8 @@ class CameraMonitor:
         failures = 0
         while not self.closed:
             self.state()
-            if self.scheduler.busy(self.camera_id):
-                self.scheduler.stats.increment("capture_backpressure_skipped", camera_id=self.camera_id)
-                await asyncio.sleep(min(self.config.interval_seconds, .25))
-                continue
-            captured, monotonic = datetime.now(UTC), time.monotonic()
+            loop_start = time.monotonic()
+            captured, monotonic = datetime.now(UTC), loop_start
             try:
                 content, _ = await self.client.capture()
                 self.scheduler.stats.observe("capture", time.monotonic() - monotonic, self.camera_id)
@@ -213,9 +219,8 @@ class CameraMonitor:
                 self.scheduler.remove_monitor(self.camera_id)
                 self.invalidate("offline")
                 failures += 1
-            delay = min(max(30, self.config.interval_seconds),
-                        self._capture_delay() * 2 ** min(failures, 5))
-            await asyncio.sleep(delay)
+            delay = min(30.0, self._capture_delay() * 2 ** min(failures, 5))
+            await asyncio.sleep(max(0.0, delay - (time.monotonic() - loop_start)))
 
     async def close(self):
         self.closed = True

@@ -16,11 +16,12 @@ from app.schemas import MonitorIn
 def criar_monitor(monkeypatch):
     monkeypatch.setattr("app.routers.monitors.SnapshotClient", lambda config: MagicMock())
 
-    def factory(confirmation_reads=2, stale_after_seconds=5):
+    def factory(confirmation_reads=2, stale_after_seconds=5, min_confidence=0.0):
         config = MonitorIn(
             host="camera",
             confirmation_reads=confirmation_reads,
             stale_after_seconds=stale_after_seconds,
+            min_confidence=min_confidence,
         )
         return CameraMonitor("cam1", config, None)
 
@@ -47,6 +48,30 @@ def test_confirma_apos_leituras_suficientes(criar_monitor):
     assert estado["status"] == "confirmed"
     assert estado["placa"] == "ABC1D23"
     assert estado["consecutiveReads"] == 2
+
+
+def test_ignora_leitura_abaixo_da_confianca_minima(criar_monitor):
+    monitor = criar_monitor(confirmation_reads=1, min_confidence=0.8)
+    ler(monitor, "ABC1D23", confianca=0.7)
+    estado = monitor.state()
+    assert estado["status"] == "waiting"
+    assert estado["placa"] is None
+    assert monitor.historico == []
+
+    ler(monitor, "ABC1D23", confianca=0.9)
+    estado = monitor.state()
+    assert estado["status"] == "confirmed"
+    assert estado["placa"] == "ABC1D23"
+
+
+def test_confianca_minima_nao_invalida_observacao_confirmada(criar_monitor):
+    monitor = criar_monitor(confirmation_reads=1, min_confidence=0.8)
+    ler(monitor, "ABC1D23", confianca=0.9)
+    assert monitor.state()["status"] == "confirmed"
+    ler(monitor, "ABC1D23", confianca=0.5)
+    estado = monitor.state()
+    assert estado["status"] == "confirmed"
+    assert estado["consecutiveReads"] == 1
 
 
 def test_misread_pontual_nao_zera_confirmacao(criar_monitor):

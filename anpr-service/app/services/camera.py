@@ -4,6 +4,7 @@ Sem dependência de banco: a câmera é representada por um dataclass simples.
 """
 
 import asyncio
+import time
 from dataclasses import dataclass
 from ..config import settings
 
@@ -62,6 +63,8 @@ class SnapshotClient:
         self.camera = camera
         self.url = camera.url_snapshot
         self.client = httpx.AsyncClient(auth=_montar_auth(camera), timeout=5.0)
+        self._discovery_failures = 0
+        self._next_discovery = 0.0
 
     async def _get(self, url):
         async with self.client.stream("GET", url) as response:
@@ -80,17 +83,26 @@ class SnapshotClient:
         except TimeoutError as exc:
             raise CameraSnapshotError("Tempo de captura excedido") from exc
 
+    def _discovery_backoff(self) -> float:
+        return min(60.0, 2.0 ** min(self._discovery_failures, 5))
+
     async def _capture(self) -> tuple[bytes, str]:
         if not self.url:
+            if time.monotonic() < self._next_discovery:
+                raise CameraNaoConfiguradaError("Descoberta de snapshot em espera")
             for path in CAMINHOS_SNAPSHOT:
                 candidate = f"{_montar_base(self.camera)}{path}"
                 try:
                     content = await self._get(candidate)
                     if _is_image(content):
                         self.url = candidate
+                        self._discovery_failures = 0
+                        self._next_discovery = 0.0
                         return content, candidate
                 except (httpx.HTTPError, CameraSnapshotError):
                     continue
+            self._discovery_failures += 1
+            self._next_discovery = time.monotonic() + self._discovery_backoff()
             raise CameraNaoConfiguradaError("Nenhum endpoint de snapshot válido respondeu")
         try:
             content = await self._get(self.url)
@@ -100,6 +112,8 @@ class SnapshotClient:
         except (httpx.HTTPError, CameraSnapshotError) as exc:
             if not self.camera.url_snapshot:
                 self.url = None
+                self._next_discovery = 0.0
+                self._discovery_failures = 0
             # HTTP exceptions contain URLs/credentials. Never expose their text.
             raise CameraSnapshotError("Falha ao capturar snapshot da câmera") from exc
 
