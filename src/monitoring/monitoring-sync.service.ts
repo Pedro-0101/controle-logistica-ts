@@ -77,6 +77,7 @@ export class MonitoringSyncService {
             intervalSeconds: Math.max(0.1, intervalMs / 1000),
             staleAfterSeconds: resolved.anprStaleAfterSeconds,
             confirmationReads: resolved.anprConfirmationReads,
+            minConfidence: Number(resolved.anprConfidenceThreshold),
           });
           this.registered.add(camera.id);
         } catch (error: any) { this.logger.warn(`Monitor indisponível para câmera ${camera.id}: ${error?.message ?? error}`); }

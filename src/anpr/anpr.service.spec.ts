@@ -269,6 +269,7 @@ describe('AnprService', () => {
         intervalSeconds: 2,
         staleAfterSeconds: 10,
         confirmationReads: 3,
+        minConfidence: 0.85,
       });
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -284,6 +285,7 @@ describe('AnprService', () => {
             interval_seconds: 2,
             stale_after_seconds: 10,
             confirmation_reads: 3,
+            min_confidence: 0.85,
           }),
         }),
       );

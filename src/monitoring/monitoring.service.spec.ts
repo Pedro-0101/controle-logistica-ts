@@ -132,6 +132,7 @@ describe('MonitoringService', () => {
         cameraSnapshotIntervalMs: 500,
         anprStaleAfterSeconds: 10,
         anprConfirmationReads: 3,
+        anprConfidenceThreshold: 0.9,
       });
       anprService.listMonitors.mockResolvedValue([]);
 
@@ -141,6 +142,7 @@ describe('MonitoringService', () => {
         intervalSeconds: 0.5,
         staleAfterSeconds: 10,
         confirmationReads: 3,
+        minConfidence: 0.9,
       });
     });
 
@@ -156,6 +158,7 @@ describe('MonitoringService', () => {
         cameraSnapshotIntervalMs: 2000,
         anprStaleAfterSeconds: 10,
         anprConfirmationReads: 3,
+        anprConfidenceThreshold: 0.85,
       });
       anprService.listMonitors.mockResolvedValue([]);
 
@@ -165,6 +168,7 @@ describe('MonitoringService', () => {
         intervalSeconds: 2,
         staleAfterSeconds: 15,
         confirmationReads: 5,
+        minConfidence: 0.85,
       });
     });
 
