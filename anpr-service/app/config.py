@@ -8,15 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # anpr-service/
 
-# Limites de threads nativas definidos ANTES de importar torch/paddle. Em
-# máquinas com pouca RAM, os pools OpenMP/MKL multiplicam o consumo de memória
-# e podem provocar Access Violation/OOM (código 3221225477 no Windows).
-os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
-os.environ.setdefault("MKL_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
-os.environ.setdefault("OPENBLAS_NUM_THREADS", os.environ.get("ANPR_NATIVE_THREADS", "1"))
-os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "False")
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -41,6 +32,8 @@ class Settings(BaseSettings):
     anpr_yolo_conf: float = Field(0.25, gt=0.0, le=1.0)
     # Nº de threads nativas dos runtimes (OpenMP/MKL). 1 mantém a memória baixa.
     anpr_native_threads: int = Field(1, ge=1, le=8)
+    # oneDNN/MKLDNN acelera o OCR em CPU; desligue se houver instabilidade nativa.
+    anpr_mkldnn: bool = True
     # Fallback do PaddleOCR na imagem inteira (sem YOLO). Desligar economiza
     # muito tempo/memória: o caminho do YOLO já cobre a maioria dos frames.
     anpr_full_frame_fallback: bool = False
@@ -66,3 +59,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Definido depois de carregar o .env e antes de importar torch/paddle. Em
+# máquinas com pouca RAM, os pools OpenMP/MKL multiplicam o consumo de memória
+# e podem provocar Access Violation/OOM (código 3221225477 no Windows).
+os.environ.setdefault("OMP_NUM_THREADS", str(settings.anpr_native_threads))
+os.environ.setdefault("MKL_NUM_THREADS", str(settings.anpr_native_threads))
+os.environ.setdefault("OPENBLAS_NUM_THREADS", str(settings.anpr_native_threads))
+os.environ.setdefault(
+    "PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "True" if settings.anpr_mkldnn else "False"
+)
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")

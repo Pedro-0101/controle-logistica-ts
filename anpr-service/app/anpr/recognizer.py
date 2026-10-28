@@ -8,23 +8,14 @@ Mais rápido e preciso que rodar PaddleOCR na imagem inteira.
 Faz fallback para PaddleOCR completo se YOLO não detectar nada.
 """
 
-import os
 import threading
 from dataclasses import dataclass, replace
 
 import numpy as np
 
+from ..config import settings
 from .plate import Placa, normalizar_placa
 from .preprocessamento import cortar_bordas, preparar_recorte, realcar_imagem
-
-# Deve ser definido ANTES de importar torch/paddle: evita que os runtimes
-# nativos (OpenMP/MKL) disputem threads e provoquem Access Violation
-# (0xC0000005) no Windows durante inferência concorrente.
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "False")
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
 # YOLO (PyTorch) e PaddleOCR compartilham recursos nativos e não são seguros
 # para inferência simultânea no mesmo processo: serializa todas as inferências.
@@ -62,9 +53,7 @@ def _extrair_box(boxes, indice: int) -> tuple[float, float, float, float] | None
 class PlacaRecognizer:
     def __init__(self, lang: str = "en") -> None:
         from paddleocr import PaddleOCR, TextRecognition
-        from ..config import settings
 
-        self._lang = lang
         # Use the same resolver as PaddleOCR(lang=lang), without initializing its
         # text detector. Do not use TextRecognition's independent default model.
         detector_name, resolved_reader = PaddleOCR._get_ocr_model_names(
@@ -84,13 +73,11 @@ class PlacaRecognizer:
             # loads a different recognition model than the main crop path.
             self._ocr = PaddleOCR(use_doc_orientation_classify=False,
                                   use_doc_unwarping=False, use_textline_orientation=False,
-                                  lang=self._lang,
                                   text_detection_model_name=self._detector_model,
                                   text_recognition_model_name=self._reader_model)
         return self._ocr
 
     def _read_crop(self, recorte):
-        from ..config import settings
         with _INFERENCE_LOCK:
             results = list(self._text_reader.predict(recorte))
         readings = [(str(page["rec_text"]), float(page["rec_score"])) for page in results]
@@ -141,7 +128,6 @@ class PlacaRecognizer:
         válida, repete com pré-processamento (contraste + upscale), que
         resgata placas difíceis sem penalizar as fáceis.
         """
-        from ..config import settings
         from .detector import detectar_placas, recortar_placa
 
         with _INFERENCE_LOCK:
@@ -223,7 +209,5 @@ def get_recognizer() -> PlacaRecognizer:
     """Retorna a instância única do reconhecedor, criando-a sob demanda."""
     global _recognizer
     if _recognizer is None:
-        from ..config import settings
-
         _recognizer = PlacaRecognizer(lang=settings.anpr_lang)
     return _recognizer
