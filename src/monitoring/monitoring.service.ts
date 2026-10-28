@@ -100,8 +100,13 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
   }
 
   async getConfirmedObservations(): Promise<Array<{ camera: Camera; observation: CurrentObservation }>> {
+    return (await this.getConfirmedObservationsReport()).observations;
+  }
+
+  async getConfirmedObservationsReport() {
     const cameras = await this.cameras.find();
     const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
+    let unavailableCameras = 0;
     for (const camera of cameras) {
       try {
         const state = await this.anpr.currentObservation(camera.id);
@@ -109,10 +114,10 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
           results.push({ camera, observation: state });
         }
       } catch {
-        // skip cameras that are offline or returning errors
+        unavailableCameras++;
       }
     }
-    return results;
+    return { observations: results, checkedCameras: cameras.length, unavailableCameras };
   }
 
   /**
@@ -125,6 +130,7 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
     for (const camera of cameras) {
       try {
+        if (!await this.context.validContext(camera)) continue;
         const state = await this.anpr.currentObservation(camera.id);
         if (this.usable(state)) {
           results.push({ camera, observation: state });
@@ -134,6 +140,14 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       }
     }
     return results;
+  }
+
+  /** Events carry only IDs: always resolve company/point and freshness on the server. */
+  async getActiveObservation(cameraId: string): Promise<{ camera: Camera; observation: CurrentObservation } | null> {
+    const camera = await this.cameras.findOneBy({ id: cameraId });
+    if (!camera || !await this.context.validContext(camera)) return null;
+    const observation = await this.anpr.currentObservation(cameraId);
+    return this.usable(observation) ? { camera, observation } : null;
   }
 
   async ensureObservationPersisted(camera: Camera, state: CurrentObservation): Promise<CameraObservation> {

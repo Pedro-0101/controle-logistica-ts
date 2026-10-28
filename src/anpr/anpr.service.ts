@@ -11,6 +11,12 @@ const recognitionSchema = z.object({
   box: z.array(z.number().finite()).length(4).nullish(),
   camera_url_encontrada: z.string().nullish(), foto_path: z.string().nullish(),
 });
+const monitorEventsSchema = z.object({
+  cursor: z.string().min(1).max(256),
+  reset: z.boolean(),
+  events: z.array(z.object({ cameraId: z.string().min(1).max(256) })).max(1024),
+});
+export type MonitorEvents = z.infer<typeof monitorEventsSchema>;
 export interface PlacaReconhecida {
   placa: string; formato: string; confianca: number; raw: string;
   box?: number[]; cameraUrlEncontrada?: string; fotoPath?: string;
@@ -57,6 +63,18 @@ export class AnprService {
       return value;
     } catch { throw new BadGatewayException('Resposta de monitoramento ANPR inválida'); }
   }
+  async monitorEvents(cursor?: string, signal?: AbortSignal): Promise<MonitorEvents> {
+    const query = new URLSearchParams({ wait_seconds: '20' });
+    if (cursor) query.set('cursor', cursor);
+    const response = await this.request(`/monitor-events?${query}`, 'GET', undefined, 25_000, signal);
+    try { return monitorEventsSchema.parse(await response.json()); }
+    catch { throw new BadGatewayException('Resposta de eventos ANPR inválida'); }
+  }
+  async performanceStats(): Promise<Record<string, unknown>> {
+    const response = await this.request('/stats', 'GET');
+    try { return z.record(z.string(), z.unknown()).parse(await response.json()); }
+    catch { throw new BadGatewayException('Estatísticas ANPR inválidas'); }
+  }
   async observationImage(cameraId: string, observationId: string): Promise<Buffer> {
     const response = await this.request(`/monitors/${encodeURIComponent(cameraId)}/observations/${encodeURIComponent(observationId)}/image`, 'GET');
     if (!response.headers.get('content-type')?.startsWith('image/jpeg') || !response.body) {
@@ -87,11 +105,11 @@ export class AnprService {
         box: data.box ?? undefined, cameraUrlEncontrada: data.camera_url_encontrada ?? undefined, fotoPath: data.foto_path ?? undefined };
     } catch { throw new BadGatewayException('Resposta de reconhecimento ANPR inválida'); }
   }
-  private async request(path: string, method: string, body?: unknown, timeoutMs = 3_000): Promise<Response> {
+  private async request(path: string, method: string, body?: unknown, timeoutMs = 3_000, signal?: AbortSignal): Promise<Response> {
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, { method,
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
       });
     } catch { throw new BadGatewayException('Serviço ANPR indisponível'); }

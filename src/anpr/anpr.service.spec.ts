@@ -47,6 +47,29 @@ describe('AnprService', () => {
     expect(service).toBeDefined();
   });
 
+  it('long poll preserves the opaque cursor and supports shutdown cancellation', async () => {
+    const controller = new AbortController();
+    const batch = { cursor: 'epoch:9', reset: false, events: [{ cameraId: 'cam-1' }] };
+    fetchMock.mockResolvedValue({ ok: true, json: async () => batch });
+    await expect(service.monitorEvents('epoch:8', controller.signal)).resolves.toEqual(batch);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://anpr:8000/monitor-events?wait_seconds=20&cursor=epoch%3A8');
+    const signal = fetchMock.mock.calls[0][1].signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    controller.abort();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('rejects malformed event batches instead of advancing an invalid cursor', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ cursor: '', reset: false, events: [] }) });
+    await expect(service.monitorEvents()).rejects.toThrow('Resposta de eventos ANPR inválida');
+  });
+
+  it('returns Python performance metrics without inventing missing values', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ count: 0, timings: { queue_wait: null } }) });
+    await expect(service.performanceStats()).resolves.toEqual({ count: 0, timings: { queue_wait: null } });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://anpr:8000/stats');
+  });
+
   it('reconhecerImagem deve chamar o microserviço e mapear a resposta', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

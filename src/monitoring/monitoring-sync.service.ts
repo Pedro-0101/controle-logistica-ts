@@ -74,7 +74,7 @@ export class MonitoringSyncService {
           const resolved = resolveAnprConfig(companyConfig, point);
           const intervalMs = companyConfig?.cameraSnapshotIntervalMs ?? 1000;
           await this.anpr.upsertMonitor(camera, {
-            intervalSeconds: Math.max(1, Math.round(intervalMs / 1000)),
+            intervalSeconds: Math.max(0.1, intervalMs / 1000),
             staleAfterSeconds: resolved.anprStaleAfterSeconds,
             confirmationReads: resolved.anprConfirmationReads,
           });

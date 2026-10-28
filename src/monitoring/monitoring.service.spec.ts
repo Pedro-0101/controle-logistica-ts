@@ -129,7 +129,7 @@ describe('MonitoringService', () => {
       pointsRepo.findOneBy.mockResolvedValue({ id: 'point-1', companyId: 'company-1', active: true, adminUnityId: 'unit-1' });
       unitsRepo.findOneBy.mockResolvedValue({ id: 'unit-1', companyId: 'company-1', active: true });
       companyConfigService.findOne.mockResolvedValue({
-        cameraSnapshotIntervalMs: 2000,
+        cameraSnapshotIntervalMs: 500,
         anprStaleAfterSeconds: 10,
         anprConfirmationReads: 3,
       });
@@ -138,7 +138,7 @@ describe('MonitoringService', () => {
       await service.reconcile();
 
       expect(anprService.upsertMonitor).toHaveBeenCalledWith(camera, {
-        intervalSeconds: 2,
+        intervalSeconds: 0.5,
         staleAfterSeconds: 10,
         confirmationReads: 3,
       });
