@@ -296,6 +296,49 @@ describe('MonitoringService', () => {
     });
   });
 
+  describe('getConfirmedObservationsReport', () => {
+    it('usa o histórico persistido quando o filtro de datas é informado', async () => {
+      const camera = { id: 'cam-1', companyId: 'company-1', name: 'Portaria' } as Camera;
+      const getMany = vi.fn().mockResolvedValue([{
+        id: 'obs-1',
+        cameraId: 'cam-1',
+        plate: 'ABC1D23',
+        confidence: 0.9,
+        capturedAt: new Date('2026-08-01T10:00:00.000Z'),
+        lastSeenAt: new Date('2026-08-01T10:00:01.000Z'),
+        expiresAt: new Date('2026-08-01T10:00:05.000Z'),
+      }]);
+      const query = {
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        getMany,
+      };
+      observationsRepo.createQueryBuilder.mockReturnValueOnce(query);
+
+      const report = await service.getConfirmedObservationsReport({
+        cameras: [camera],
+        dateFrom: new Date('2026-08-01T00:00:00.000Z'),
+        dateTo: new Date('2026-08-31T23:59:59.999Z'),
+      });
+
+      expect(query.andWhere).toHaveBeenCalledWith('observation.capturedAt >= :dateFrom', {
+        dateFrom: new Date('2026-08-01T00:00:00.000Z'),
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('observation.capturedAt <= :dateTo', {
+        dateTo: new Date('2026-08-31T23:59:59.999Z'),
+      });
+      expect(report.observations).toHaveLength(1);
+      expect(report.observations[0].observation).toMatchObject({
+        observationId: 'obs-1',
+        placa: 'ABC1D23',
+        status: 'confirmed',
+      });
+      expect(anprService.currentObservation).not.toHaveBeenCalled();
+    });
+  });
+
   describe('cameraInScope', () => {
     it('deve retornar câmera quando contexto é válido', async () => {
       const camera = { id: 'cam-1', pointId: 'point-1', adminUnityId: 'unit-1', companyId: 'company-1' } as Camera;

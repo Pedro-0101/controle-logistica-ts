@@ -103,8 +103,22 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
     return (await this.getConfirmedObservationsReport()).observations;
   }
 
-  async getConfirmedObservationsReport() {
-    const cameras = await this.cameras.find();
+  /** Lista as câmeras (opcionalmente de uma empresa) para as métricas. */
+  async listCameras(companyId?: string): Promise<Camera[]> {
+    return companyId ? this.cameras.find({ where: { companyId } }) : this.cameras.find();
+  }
+
+  async getConfirmedObservationsReport(options: {
+    cameras?: Camera[];
+    dateFrom?: Date;
+    dateTo?: Date;
+  } = {}) {
+    const cameras = options.cameras ?? await this.listCameras();
+
+    if (options.dateFrom || options.dateTo) {
+      return this.getHistoricalObservationsReport(cameras, options.dateFrom, options.dateTo);
+    }
+
     const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
     let unavailableCameras = 0;
     for (const camera of cameras) {
@@ -118,6 +132,63 @@ export class MonitoringService implements OnApplicationBootstrap, OnModuleDestro
       }
     }
     return { observations: results, checkedCameras: cameras.length, unavailableCameras };
+  }
+
+  /**
+   * Consulta o histórico persistido quando o filtro de datas é informado.
+   * O estado atual do ANPR só representa as leituras recentes, então períodos
+   * passados precisam vir de `camera_observations`.
+   */
+  private async getHistoricalObservationsReport(
+    cameras: Camera[],
+    dateFrom?: Date,
+    dateTo?: Date,
+  ) {
+    if (cameras.length === 0) {
+      return { observations: [], checkedCameras: 0, unavailableCameras: 0 };
+    }
+
+    const query = this.observations
+      .createQueryBuilder('observation')
+      .where('observation.cameraId IN (:...cameraIds)', {
+        cameraIds: cameras.map((camera) => camera.id),
+      })
+      .orderBy('observation.capturedAt', 'DESC')
+      .limit(1000);
+
+    if (dateFrom) {
+      query.andWhere('observation.capturedAt >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      query.andWhere('observation.capturedAt <= :dateTo', { dateTo });
+    }
+
+    const rows = await query.getMany();
+    const camerasById = new Map(cameras.map((camera) => [camera.id, camera]));
+    const results: Array<{ camera: Camera; observation: CurrentObservation }> = [];
+    for (const row of rows) {
+      const camera = camerasById.get(row.cameraId);
+      if (camera) {
+        results.push({ camera, observation: this.toCurrentObservation(row) });
+      }
+    }
+
+    return { observations: results, checkedCameras: cameras.length, unavailableCameras: 0 };
+  }
+
+  private toCurrentObservation(row: CameraObservation): CurrentObservation {
+    return {
+      cameraId: row.cameraId,
+      status: 'confirmed',
+      observationId: row.id,
+      placa: row.plate,
+      confianca: row.confidence,
+      capturedAt: row.capturedAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+      consecutiveReads: 1,
+      box: null,
+    };
   }
 
   /**
