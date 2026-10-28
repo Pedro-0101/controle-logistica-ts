@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     )
 
     anpr_lang: str = "en"
+    # Empty = resolve exactly the recognition model selected by installed PaddleOCR.
+    anpr_text_recognition_model: str = ""
+    anpr_crop_pipeline_fallback: bool = True
+    anpr_scene_filter: bool = True
+    anpr_scene_change_threshold: float = Field(2.0, ge=0, le=255)
+    anpr_force_probe_seconds: float = Field(2.0, ge=0.1, le=30)
+    anpr_idle_capture_max_seconds: float = Field(2.0, ge=0.1, le=30)
     anpr_warmup: bool = False
     # Detecção YOLO: modelo vazio = auto (weights/best.pt local, senão HuggingFace).
     anpr_yolo_model: str = ""

@@ -123,9 +123,9 @@ async def reconhecer_imagem(body: ReconhecerImagemIn, request: Request) -> Placa
 @router.get(
     "/stats",
     response_model=StatsOut,
-    summary="Estatísticas de tempo de inferência (somente imagens com placa reconhecida)",
+    summary="Métricas de captura, fila e inferência; campos legados só de reconhecimentos",
 )
 async def inference_stats(request: Request) -> StatsOut:
-    """Retorna métricas de tempo de inferência (YOLO + PaddleOCR) para imagens que tiveram placa reconhecida."""
+    """Durações em ms; não inclui persistência de movimentos no NestJS."""
     return StatsOut(**request.app.state.stats.snapshot())
 

@@ -7,11 +7,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import cv2
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Query
 from ..schemas import MonitorIn
 from ..config import settings
 from ..services.camera import CameraConfig, SnapshotClient
 from ..services.imagem import decodificar
+from ..services.events import MonitorEvents
 
 logger = logging.getLogger("anpr")
 
@@ -23,7 +24,7 @@ def iso(value):
 
 
 class CameraMonitor:
-    def __init__(self, camera_id, config, scheduler):
+    def __init__(self, camera_id, config, scheduler, events=None):
         self.camera_id, self.config, self.scheduler = camera_id, config, scheduler
         self.client = SnapshotClient(CameraConfig(config.host, config.port, config.user,
                                    config.password, config.auth, config.camera_url))
@@ -40,16 +41,32 @@ class CameraMonitor:
         self.epoch = 0
         self.closed = False
         self.task = None
+        self.events = events
+        self.previous_scene = None
+        self.last_probe = 0.0
+        self.idle_captures = 0
+        self._accepting = False
+
+    def _event_state(self):
+        return (self.status, self.observation_id, self.plate, self.confidence,
+                self.reads, self.last_seen, self.box)
+
+    def _publish(self):
+        if self.events:
+            self.events.publish(self.camera_id)
 
     def start(self):
         self.task = asyncio.create_task(self._capture())
 
     def invalidate(self, status):
+        before = self._event_state()
         self.status = status
         self.observation_id = self.plate = self.confidence = self.box = self.evidence = None
         self.captured_at = self.last_seen = None
         self.reads = 0
         self.historico = []
+        if not self._accepting and before != self._event_state():
+            self._publish()
 
     def state(self):
         if self.observation_id and time.monotonic() - self.last_mono >= self.config.stale_after_seconds:
@@ -71,6 +88,16 @@ class CameraMonitor:
         return Counter(placa for placa, _ in self.historico)
 
     def accept(self, result, error, epoch, captured, monotonic, jpeg):
+        before = self._event_state()
+        self._accepting = True
+        try:
+            self._accept(result, error, epoch, captured, monotonic, jpeg)
+        finally:
+            self._accepting = False
+        if not self.closed and epoch == self.epoch and before != self._event_state():
+            self._publish()
+
+    def _accept(self, result, error, epoch, captured, monotonic, jpeg):
         if self.closed or epoch != self.epoch:
             return
         self.state()
@@ -122,31 +149,72 @@ class CameraMonitor:
         else:
             self.status = "candidate"
 
+    def _should_infer(self, image, now):
+        # Compare with last inferred scene (not previous capture), so slow motion
+        # accumulates. Active observations are never suppressed by scene filtering.
+        scene = cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), (96, 54))
+        force_after = min(settings.anpr_force_probe_seconds, self.config.stale_after_seconds / 2)
+        changed = self.previous_scene is None
+        if not changed:
+            delta = cv2.absdiff(scene, self.previous_scene)
+            changed = float(delta.mean()) >= settings.anpr_scene_change_threshold or float((delta > 15).mean()) >= .01
+        infer = (not settings.anpr_scene_filter or changed or self.status in ("candidate", "confirmed")
+                 or now - self.last_probe >= force_after)
+        self.idle_captures = 0 if changed or self.status in ("candidate", "confirmed") else self.idle_captures + 1
+        if infer:
+            self.previous_scene = scene
+            self.last_probe = now
+        return infer
+
+    def _capture_delay(self):
+        base = self.config.interval_seconds
+        if not settings.anpr_scene_filter or not self.idle_captures or self.status in ("candidate", "confirmed"):
+            return base
+        ceiling = max(base, min(settings.anpr_idle_capture_max_seconds,
+                                settings.anpr_force_probe_seconds, self.config.stale_after_seconds / 2))
+        return min(ceiling, base * (1 + min(self.idle_captures, 4) * .25))
+
     async def _capture(self):
         failures = 0
         while not self.closed:
+            self.state()
+            if self.scheduler.busy(self.camera_id):
+                self.scheduler.stats.increment("capture_backpressure_skipped", camera_id=self.camera_id)
+                await asyncio.sleep(min(self.config.interval_seconds, .25))
+                continue
             captured, monotonic = datetime.now(UTC), time.monotonic()
             try:
                 content, _ = await self.client.capture()
+                self.scheduler.stats.observe("capture", time.monotonic() - monotonic, self.camera_id)
+                self.scheduler.stats.increment("snapshots", camera_id=self.camera_id)
+                self.scheduler.stats.increment("snapshot_bytes", len(content), self.camera_id)
                 image = decodificar(content)
-                ok, encoded = cv2.imencode(".jpg", image)
-                if not ok:
-                    raise ValueError("Invalid JPEG")
-                epoch = self.epoch
-                self.scheduler.submit_monitor(self.camera_id, image,
-                    lambda result, error, e=epoch, c=captured, m=monotonic, j=encoded.tobytes():
-                        self.accept(result, error, e, c, m, j),
-                    expires_at=monotonic + self.config.stale_after_seconds)
+                if self._should_infer(image, time.monotonic()):
+                    jpeg = content
+                    if not content.startswith(b"\xff\xd8\xff"):
+                        ok, encoded = cv2.imencode(".jpg", image)
+                        if not ok:
+                            raise ValueError("Invalid JPEG")
+                        jpeg = encoded.tobytes()
+                    epoch = self.epoch
+                    self.scheduler.submit_monitor(self.camera_id, image,
+                        lambda result, error, e=epoch, c=captured, m=monotonic, j=jpeg:
+                            self.accept(result, error, e, c, m, j),
+                        expires_at=monotonic + self.config.stale_after_seconds, captured_at=monotonic)
+                else:
+                    self.scheduler.stats.increment("scene_inference_skipped", camera_id=self.camera_id)
                 failures = 0
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self.scheduler.stats.increment("capture_error", camera_id=self.camera_id)
+                self.scheduler.stats.observe("capture_failure", time.monotonic() - monotonic, self.camera_id)
                 self.epoch += 1  # Discard inference from before this capture failure.
                 self.scheduler.remove_monitor(self.camera_id)
                 self.invalidate("offline")
                 failures += 1
             delay = min(max(30, self.config.interval_seconds),
-                        self.config.interval_seconds * 2 ** min(failures, 5))
+                        self._capture_delay() * 2 ** min(failures, 5))
             await asyncio.sleep(delay)
 
     async def close(self):
@@ -164,6 +232,7 @@ class MonitorManager:
         self.scheduler = scheduler
         self.monitors = {}
         self.lock = asyncio.Lock()
+        self.events = MonitorEvents()
 
     async def upsert(self, camera_id, config):
         async with self.lock:
@@ -174,7 +243,7 @@ class MonitorManager:
                 raise HTTPException(503, "Limite de câmeras atingido")
             if old:
                 await old.close()
-            monitor = CameraMonitor(camera_id, config, self.scheduler)
+            monitor = CameraMonitor(camera_id, config, self.scheduler, self.events)
             self.monitors[camera_id] = monitor
             monitor.start()
             return monitor
@@ -194,11 +263,19 @@ class MonitorManager:
         for monitor in list(self.monitors.values()):
             await monitor.close()
         self.monitors.clear()
+        self.events.close()
 
 
 @router.put("/monitors/{camera_id}")
 async def upsert(camera_id: str, body: MonitorIn, request: Request):
     return (await request.app.state.monitors.upsert(camera_id, body)).state()
+
+
+@router.get("/monitor-events")
+async def monitor_events(request: Request, cursor: str | None = None,
+                         wait_seconds: float = Query(20, ge=0, le=25)):
+    manager = request.app.state.monitors
+    return await manager.events.poll(cursor, wait_seconds, lambda: list(manager.monitors))
 
 
 @router.get("/monitors")

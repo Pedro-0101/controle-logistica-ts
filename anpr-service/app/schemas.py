@@ -45,6 +45,14 @@ class HealthOut(BaseModel):
 
 
 class StatsOut(BaseModel):
+    version: int = 2
+    uptime_seconds: float = 0
+    window_capacity: int = 1000
+    semantics: dict[str, str] = Field(default_factory=dict)
+    counters: dict[str, int] = Field(default_factory=dict)
+    queue: dict[str, int] = Field(default_factory=dict)
+    durations: dict[str, dict[str, float | int]] = Field(default_factory=dict)
+    cameras: dict[str, dict] = Field(default_factory=dict)
     count: int = Field(..., description="Total de imagens com placa reconhecida")
     avg_ms: float = Field(..., description="Tempo médio de inferência (ms)")
     min_ms: float = Field(..., description="Menor tempo de inferência (ms)")

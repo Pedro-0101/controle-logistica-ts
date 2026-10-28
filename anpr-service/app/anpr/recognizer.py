@@ -61,14 +61,51 @@ def _extrair_box(boxes, indice: int) -> tuple[float, float, float, float] | None
 
 class PlacaRecognizer:
     def __init__(self, lang: str = "en") -> None:
-        from paddleocr import PaddleOCR
+        from paddleocr import PaddleOCR, TextRecognition
+        from ..config import settings
 
-        self._ocr = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            lang=lang,
-        )
+        self._lang = lang
+        # Use the same resolver as PaddleOCR(lang=lang), without initializing its
+        # text detector. Do not use TextRecognition's independent default model.
+        detector_name, resolved_reader = PaddleOCR._get_ocr_model_names(
+            object.__new__(PaddleOCR), lang, None)
+        reader_name = settings.anpr_text_recognition_model or resolved_reader
+        if not reader_name:
+            raise ValueError("No recognition model configured for the OCR language")
+        self._detector_model = detector_name
+        self._reader_model = reader_name
+        self._text_reader = TextRecognition(model_name=reader_name)
+        self._ocr = None
+
+    def _full_ocr(self):
+        if self._ocr is None:
+            from paddleocr import PaddleOCR
+            # Reuse the reader selected above so the fallback never downloads or
+            # loads a different recognition model than the main crop path.
+            self._ocr = PaddleOCR(use_doc_orientation_classify=False,
+                                  use_doc_unwarping=False, use_textline_orientation=False,
+                                  lang=self._lang,
+                                  text_detection_model_name=self._detector_model,
+                                  text_recognition_model_name=self._reader_model)
+        return self._ocr
+
+    def _read_crop(self, recorte):
+        from ..config import settings
+        with _INFERENCE_LOCK:
+            results = list(self._text_reader.predict(recorte))
+        readings = [(str(page["rec_text"]), float(page["rec_score"])) for page in results]
+        if any(normalizar_placa(text) for text, _ in readings) or not settings.anpr_crop_pipeline_fallback:
+            return readings
+        # Detection/rectification is retained only for difficult (e.g. two-row or
+        # angled) crops that the direct reader could not interpret as a plate.
+        with _INFERENCE_LOCK:
+            pages = list(self._full_ocr().predict(recorte))
+        for page in pages:
+            texts, scores = page["rec_texts"], page["rec_scores"]
+            readings.extend((text, float(score)) for text, score in zip(texts, scores, strict=False))
+            if len(texts) == 2 and len(scores) == 2:
+                readings.append(("".join(texts), min(float(score) for score in scores)))
+        return readings
 
     def reconhecer(self, imagem: np.ndarray, full_frame_fallback: bool = True) -> list[CandidatoPlaca]:
         """Retorna os candidatos a placa em uma imagem (BGR, OpenCV).
@@ -131,29 +168,24 @@ class PlacaRecognizer:
             if preprocessar:
                 recorte = preparar_recorte(recorte)
 
-            with _INFERENCE_LOCK:
-                resultado = self._ocr.predict(recorte)
-            for pagina in resultado:
-                textos = pagina["rec_texts"]
-                scores = pagina["rec_scores"]
-                for texto, score in zip(textos, scores, strict=False):
-                    placa = normalizar_placa(texto)
-                    if placa is not None:
-                        candidatos.append(
-                            CandidatoPlaca(
-                                placa=placa,
-                                confianca=float(score) * det.confianca,
-                                raw=texto,
-                                box=(float(det.x1), float(det.y1), float(det.x2), float(det.y2)),
-                            )
+            for texto, score in self._read_crop(recorte):
+                placa = normalizar_placa(texto)
+                if placa is not None:
+                    candidatos.append(
+                        CandidatoPlaca(
+                            placa=placa,
+                            confianca=float(score) * det.confianca,
+                            raw=texto,
+                            box=(float(det.x1), float(det.y1), float(det.x2), float(det.y2)),
                         )
+                    )
 
         return candidatos
 
     def _reconhecer_paddle_completo(self, imagem: np.ndarray) -> list[CandidatoPlaca]:
         """Fallback: PaddleOCR na imagem inteira (sem YOLO), com realce de contraste."""
         with _INFERENCE_LOCK:
-            resultado = self._ocr.predict(realcar_imagem(imagem))
+            resultado = list(self._full_ocr().predict(realcar_imagem(imagem)))
         candidatos: list[CandidatoPlaca] = []
         for pagina in resultado:
             textos = pagina["rec_texts"]
